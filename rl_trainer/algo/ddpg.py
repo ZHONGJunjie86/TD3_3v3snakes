@@ -52,6 +52,12 @@ class DDPG:
         self.noise_clip = 0.5
         self.policy_freq = 2
 
+        self.sample_lr = [
+        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.000004, 0.000003, 0.000002, 0.000001]
+        
+
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
 
@@ -103,14 +109,11 @@ class DDPG:
         loss_critic.backward()
         clip_grad_norm_(self.critic.parameters(), 1)
         self.critic_optimizer.step()
-        
+
         # Update the target networks
         soft_update(self.critic, self.critic_target, self.tau)
 
         
-
-        
-
         # Update the actor networks based on Adam
         # Delayed policy updates
         if self.total_it % self.policy_freq == 0:
@@ -135,6 +138,14 @@ class DDPG:
             self.c_loss = loss_critic.item()
             
             soft_update(self.actor, self.actor_target, self.tau)
+
+            if self.total_it > 40  : 
+                try:
+                    new_lr = self.sample_lr[int(self.total_it // 10)]
+                except(IndexError):
+                    new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
+                self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=new_lr)
+                self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=new_lr)
 
 
         

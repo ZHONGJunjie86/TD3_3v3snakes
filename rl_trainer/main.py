@@ -46,8 +46,6 @@ def main(args):
     history_reward = []
     history_a_loss = []
     history_c_loss = []
-
-
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
     writer = SummaryWriter(str(log_dir))
