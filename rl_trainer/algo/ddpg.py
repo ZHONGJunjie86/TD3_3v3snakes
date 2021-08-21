@@ -11,7 +11,6 @@ from common import soft_update, hard_update, device
 from algo.network import Actor, Critic
 import torch.nn.functional as F
 
-
 class DDPG:
 
     def __init__(self, obs_dim, act_dim, num_agent, args):
@@ -33,7 +32,7 @@ class DDPG:
         self.actor = Actor(obs_dim, act_dim, num_agent, args, self.output_activation).to(self.device)
         self.critic = Critic(obs_dim, act_dim, num_agent, args).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr*2)
 
         # Initialise target network and critic network with ξ' ← ξ and θ' ← θ
         self.actor_target = Actor(obs_dim, act_dim, num_agent, args, self.output_activation).to(self.device)
@@ -44,25 +43,26 @@ class DDPG:
         # Initialise replay buffer R
         self.replay_buffer = ReplayBuffer(args.buffer_size, args.batch_size)
 
-        self.c_loss = None
-        self.a_loss = None
+        self.c_loss = 0
+        self.a_loss = 0
 
         self.total_it = 0
-        self.policy_noise = 0.2
+        self.policy_noise = 0.05
         self.noise_clip = 0.5
-        self.policy_freq = 2
+        self.policy_freq = 3
 
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
 
-        p = np.random.random()
-        if p > self.eps or evaluation:
-            obs = torch.Tensor([obs]).to(self.device)
-            action = self.actor(obs).cpu().detach().numpy()[0]
-        else:
-            action = self.random_action()
-
-        self.eps *= self.decay_speed
+        #p = np.random.random()
+        #if p > self.eps or evaluation:
+        #    obs = torch.Tensor([obs]).to(self.device)
+        #    action = self.actor(obs).cpu().detach().numpy()[0]
+        #else:
+        #    action = self.random_action()
+        #self.eps *= self.decay_speed
+        obs = torch.Tensor([obs]).to(self.device)
+        action = self.actor(obs).cpu().detach().numpy()[0]
         return action
 
     def random_action(self):
@@ -79,11 +79,12 @@ class DDPG:
             self.a_lr = new_lr
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
-            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
+            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*2)
 
         if len(self.replay_buffer) < self.batch_size:
             return None, None
 
+        
         # Sample a greedy_min mini-batch of M transitions from R
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
 
@@ -101,7 +102,7 @@ class DDPG:
             
             target_next_actions = (
                 self.actor_target(next_state_batch) + noise
-            )#.clamp(-self.max_action, self.max_action)
+            ).clamp(-1, 1)
 
             target_next_q_1,target_next_q_2 = self.critic_target(next_state_batch, target_next_actions)
             target_next_q = torch.min(target_next_q_1,target_next_q_2)
@@ -166,12 +167,12 @@ class DDPG:
     def save_model(self, run_dir, episode):
         print("---------------save-------------------")
         base_path = os.path.join(run_dir, 'trained_model')
-        print("base_path",base_path)
+        print("new_lr: ",self.a_lr)
         if not os.path.exists(base_path):
             os.makedirs(base_path)
 
-        model_actor_path = os.path.join(base_path, "actor_" + str(episode) + ".pth")
+        model_actor_path = os.path.join(base_path, "actor_"  + ".pth") #+ str(episode)
         torch.save(self.actor.state_dict(), model_actor_path)
 
-        model_critic_path = os.path.join(base_path, "critic_" + str(episode) + ".pth")
+        model_critic_path = os.path.join(base_path, "critic_" + ".pth") #+ str(episode) 
         torch.save(self.critic.state_dict(), model_critic_path)

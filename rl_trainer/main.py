@@ -12,10 +12,21 @@ from common import *
 from log_path import *
 from env.chooseenv import make
 from Curve_ import cross_loss_curve
+import numpy as np
 
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+
+class Memory:
+    def __init__(self):
+        self.m_obs = []
+        self.m_obs_next = []
+    
+    def clear_memory(self):
+        del self.m_obs[:]
+        del self.m_obs_next[:]
+        
 
 def main(args):
     print("==algo: ", args.algo)
@@ -41,23 +52,29 @@ def main(args):
     obs_dim = 26
     print(f'observation dimension: {obs_dim}')
 
-    torch.manual_seed(args.seed)
-
     history_reward = []
     history_a_loss = []
     history_c_loss = []
+
+    memory  = Memory ()
+    Memory_size = 4
+
+
+    torch.manual_seed(args.seed)
+
 
     sample_lr = [
         0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
         0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
         0.000004, 0.000003, 0.000002, 0.000001]
     new_lr = 0.0001
+    training_stage = 40
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
     writer = SummaryWriter(str(log_dir))
     save_config(args, log_dir)
 
-    model = DDPG(obs_dim, act_dim, ctrl_agent_num, args)
+    model = DDPG(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
     if args.load_model:
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
@@ -66,9 +83,9 @@ def main(args):
     episode = 0
 
     while episode < args.max_episodes:
-        if episode > 40  : 
+        if episode > training_stage  : 
             try:
-                new_lr = sample_lr[int(episode-40 // 10)]
+                new_lr = sample_lr[int(episode // training_stage)]
             except(IndexError):
                 new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
 
@@ -85,7 +102,12 @@ def main(args):
         # since all snakes play independently, we choose first three snakes for training.
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
-        obs = get_observations(state_to_training, ctrl_agent_index, obs_dim, height, width)
+        obs = get_observations(state_to_training, ctrl_agent_index, obs_dim, height, width)/10
+
+        #Memory-beginning
+        for _ in range(Memory_size): 
+            memory.m_obs.append(obs)
+        obs = np.hstack(memory.m_obs)
 
         episode += 1
         step = 0
@@ -105,24 +127,34 @@ def main(args):
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))
             next_state_to_training = next_state[0]
-            next_obs = get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)
+            next_obs = get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
+            
+            #Memory
+            if len(memory.m_obs_next) !=0: 
+                del memory.m_obs_next[:1]
+                memory.m_obs_next.append(next_obs)
+            else: 
+                memory.m_obs_next = memory.m_obs
+                memory.m_obs_next[Memory_size-1] = next_obs
 
+            next_obs = np.hstack(memory.m_obs_next)
+                
             # ================================== reward shaping ========================================
             reward = np.array(reward)
             episode_reward += reward
-            if done:
-                if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
+            if done:  #结束
+                if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]): #AI赢
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=1)
-                elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
+                elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):   #random赢
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=2)
                 else:
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+                    step_reward = get_reward(info, ctrl_agent_index, reward, score=0) #平
             else:
-                if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
+                if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):   #AI长
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=3)
-                elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
+                elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):  #random长
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=4)
-                else:
+                else:                                                          #一样长
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
 
             done = np.array([done] * ctrl_agent_num)
@@ -158,12 +190,13 @@ def main(args):
                     model.save_model(run_dir, episode)
 
                 history_reward.append(np.sum(episode_reward[0:3]))
-                history_a_loss.append(model.a_loss/10)
-                history_c_loss.append(model.c_loss/10)
+                history_a_loss.append(model.a_loss)
+                history_c_loss.append(model.c_loss)
                 
                 cross_loss_curve(history_reward,history_a_loss,history_c_loss)
 
                 env.reset()
+                memory.clear_memory()
                 break
 
 
@@ -175,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
-    parser.add_argument('--buffer_size', default=int(1e5), type=int)
+    parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
     parser.add_argument('--tau', default=0.001, type=float)
     parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--seed', default=1, type=int)
@@ -183,7 +216,7 @@ if __name__ == '__main__':
     parser.add_argument('--c_lr', default=0.0001, type=float)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
-    parser.add_argument('--epsilon_speed', default=0.99998, type=float)
+    parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 
     parser.add_argument("--save_interval", default=20, type=int) #1000
     parser.add_argument("--model_episode", default=0, type=int)

@@ -18,11 +18,10 @@ class Actor(nn.Module):
 
         self.args = args
 
-        sizes_prev = [obs_dim, HIDDEN_SIZE]
+        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
         middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
         sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
 
-        self.prev_dense = mlp(sizes_prev)
 
         if self.args.algo == "bicnet":
             self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)
@@ -31,7 +30,9 @@ class Actor(nn.Module):
         elif self.args.algo == "ddpg":
             sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
 
+        #print("actor prev_dense")
         self.prev_dense = mlp(sizes_prev)
+        #print("actor post_dense")
         self.post_dense = mlp(sizes_post, output_activation=output_activation)
 
     def forward(self, obs_batch):
@@ -54,7 +55,7 @@ class Critic(nn.Module):
 
         self.args = args
 
-        sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE]
+        sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
 
         if self.args.algo == "bicnet":
             self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)
@@ -63,8 +64,11 @@ class Critic(nn.Module):
         elif self.args.algo == "ddpg":
             sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, 1]
 
+        #print("critic prev_dense")
         self.prev_dense = mlp(sizes_prev)
+        #print("critic post_dense_1")
         self.post_dense_1 = mlp(sizes_post)
+        #print("critic post_dense_2")
         self.post_dense_2 = mlp(sizes_post)
 
     def forward(self, obs_batch, action_batch):

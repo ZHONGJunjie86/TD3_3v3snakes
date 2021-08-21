@@ -44,6 +44,7 @@ def mlp(sizes,
     for i in range(len(sizes) - 1):
         act = activation if i < len(sizes) - 2 else output_activation
         layers += [nn.Linear(sizes[i], sizes[i + 1]), act]
+    #print(nn.Sequential(*layers))
     return nn.Sequential(*layers)
 
 
@@ -138,6 +139,8 @@ def get_observations(state, agents_index, obs_dim, height, width):
         snake_heads = np.array([snake[0] for snake in snakes_position])
         snake_heads = np.delete(snake_heads, i, 0)
         observations[i][16:] = snake_heads.flatten()[:]
+
+        #print(observations,type(observations))
     return observations
 
 
@@ -147,23 +150,25 @@ def get_reward(info, snake_index, reward, score):
     snake_heads = [snake[0] for snake in snakes_position]
     step_reward = np.zeros(len(snake_index))
     for i in snake_index:
-        if score == 1:
-            step_reward[i] += 50
-        elif score == 2:
-            step_reward[i] -= 25
-        elif score == 3:
-            step_reward[i] += 10
-        elif score == 4:
-            step_reward[i] -= 5
+        if score == 1:    #结束AI赢
+            step_reward[i] += 0.05
+        elif score == 2:   #结束random赢
+            step_reward[i] -= 0.025
+        elif score == 3:   #未结束AI长
+            step_reward[i] += 0.0010
+        elif score == 4:   #未结束random长
+            step_reward[i] -= 0.0005
+        elif score == 0:   #平 一样长
+            step_reward[i] = 0
 
         if reward[i] > 0:
-            step_reward[i] += 20
+            step_reward[i] += 0.00020
         else:
             self_head = np.array(snake_heads[i])
             dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
             step_reward[i] -= min(dists)
             if reward[i] < 0:
-                step_reward[i] -= 10
+                step_reward[i] -= 0.00010
 
     return step_reward
 
