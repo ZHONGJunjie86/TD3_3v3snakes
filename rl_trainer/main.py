@@ -46,6 +46,12 @@ def main(args):
     history_reward = []
     history_a_loss = []
     history_c_loss = []
+
+    sample_lr = [
+        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.000004, 0.000003, 0.000002, 0.000001]
+    new_lr = 0.0001
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
     writer = SummaryWriter(str(log_dir))
@@ -60,6 +66,11 @@ def main(args):
     episode = 0
 
     while episode < args.max_episodes:
+        if episode > 40  : 
+            try:
+                new_lr = sample_lr[int(episode-40 // 10)]
+            except(IndexError):
+                new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
 
         # Receive initial observation state s1
         state = env.reset()
@@ -120,7 +131,7 @@ def main(args):
             # Store transition in R
             model.replay_buffer.push(obs, logits, step_reward, next_obs, done)
 
-            model.update()
+            model.update(new_lr)
 
             obs = next_obs
             step += 1
@@ -160,7 +171,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
-    parser.add_argument('--max_episodes', default=50000, type=int)
+    parser.add_argument('--max_episodes', default=1000, type=int) #50000
     parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
@@ -168,13 +179,13 @@ if __name__ == '__main__':
     parser.add_argument('--tau', default=0.001, type=float)
     parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--seed', default=1, type=int)
-    parser.add_argument('--a_lr', default=0.0001, type=float)
+    parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.99998, type=float)
 
-    parser.add_argument("--save_interval", default=1000, type=int)
+    parser.add_argument("--save_interval", default=20, type=int) #1000
     parser.add_argument("--model_episode", default=0, type=int)
     parser.add_argument('--log_dir', default=datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))
 

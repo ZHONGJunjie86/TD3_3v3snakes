@@ -52,12 +52,6 @@ class DDPG:
         self.noise_clip = 0.5
         self.policy_freq = 2
 
-        self.sample_lr = [
-        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
-        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
-        0.000004, 0.000003, 0.000002, 0.000001]
-        
-
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
 
@@ -76,9 +70,16 @@ class DDPG:
             return np.random.uniform(low=-1, high=1, size=(self.num_agent, self.act_dim))
         return np.random.uniform(low=0, high=1, size=(self.num_agent, self.act_dim))
 
-    def update(self):
+    def update(self,new_lr):
 
         self.total_it += 1
+
+        if new_lr != self.a_lr:
+            print("new_lr",new_lr)
+            self.a_lr = new_lr
+            self.c_lr = new_lr
+            self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
+            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
 
         if len(self.replay_buffer) < self.batch_size:
             return None, None
@@ -94,7 +95,14 @@ class DDPG:
 
         # Compute target value for each agents in each transition using the Bi-RNN
         with torch.no_grad():
-            target_next_actions = self.actor_target(next_state_batch)
+            noise = (
+                torch.randn_like(action_batch) * self.policy_noise
+            ).clamp(-self.noise_clip, self.noise_clip)
+            
+            target_next_actions = (
+                self.actor_target(next_state_batch) + noise
+            )#.clamp(-self.max_action, self.max_action)
+
             target_next_q_1,target_next_q_2 = self.critic_target(next_state_batch, target_next_actions)
             target_next_q = torch.min(target_next_q_1,target_next_q_2)
             q_hat = reward_batch + self.gamma * target_next_q * (1 - done_batch)
@@ -119,14 +127,6 @@ class DDPG:
         if self.total_it % self.policy_freq == 0:
             # Compute actor gradient estimation according to Eq.(7)
             # and replace Q-value with the critic estimation
-            with torch.no_grad():
-                noise = (
-                    torch.randn_like(action_batch) * self.policy_noise
-                ).clamp(-self.noise_clip, self.noise_clip)
-                
-                next_action = (
-                    self.actor_target(next_state_batch) + noise
-                )#.clamp(-self.max_action, self.max_action)
             x,_ = self.critic(state_batch, self.actor(state_batch))
             loss_actor = -x.mean()
             self.actor_optimizer.zero_grad()
@@ -138,16 +138,6 @@ class DDPG:
             self.c_loss = loss_critic.item()
             
             soft_update(self.actor, self.actor_target, self.tau)
-
-            if self.total_it > 40  : 
-                try:
-                    new_lr = self.sample_lr[int(self.total_it // 10)]
-                except(IndexError):
-                    new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
-                self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=new_lr)
-                self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=new_lr)
-
-
         
         return self.c_loss, self.a_loss
 
@@ -157,6 +147,8 @@ class DDPG:
     def load_model(self, run_dir, episode):
         print(f'\nBegin to load model: ')
         base_path = os.path.join(run_dir, 'trained_model')
+        print("base_path",base_path)
+
         model_actor_path = os.path.join(base_path, "actor_" + str(episode) + ".pth")
         model_critic_path = os.path.join(base_path, "critic_" + str(episode) + ".pth")
         print(f'Actor path: {model_actor_path}')
@@ -172,7 +164,9 @@ class DDPG:
             sys.exit(f'Model not founded!')
 
     def save_model(self, run_dir, episode):
+        print("---------------save-------------------")
         base_path = os.path.join(run_dir, 'trained_model')
+        print("base_path",base_path)
         if not os.path.exists(base_path):
             os.makedirs(base_path)
 
