@@ -8,7 +8,7 @@ base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
 from replay_buffer import ReplayBuffer
 from common import soft_update, hard_update, device
-from algo.network import Actor, Critic
+from algo.network_image import Actor, Critic
 import torch.nn.functional as F
 
 class DDPG:
@@ -52,20 +52,8 @@ class DDPG:
 
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
-
-        #p = np.random.random()
-        #if p > self.eps or evaluation:
-        #    obs = torch.Tensor([obs]).to(self.device)
-        #    action = self.actor(obs).cpu().detach().numpy()[0]
-        #else:
-        #    action = self.random_action()
-        #self.eps *= self.decay_speed
         obs = torch.Tensor([obs]).to(self.device)
-        print("obs.size()",obs.size())
-        action = self.actor(obs).cpu().detach().numpy()
-        print("ddpg action",action)
-        action =action[0]
-        print("ddpg action[0]",action)
+        action = self.actor(obs).cpu().detach().numpy()[0]
         return action
 
     def random_action(self):
@@ -91,10 +79,12 @@ class DDPG:
         # Sample a greedy_min mini-batch of M transitions from R
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
 
-        state_batch = torch.Tensor(state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
-        action_batch = torch.Tensor(action_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
+        
+        state_batch = torch.Tensor(state_batch)
+        state_batch = torch.Tensor(state_batch).reshape(self.batch_size,4,20,10).to(self.device)
+        action_batch = torch.Tensor(action_batch).reshape(self.batch_size, 3, 4).to(self.device) #4,-1
         reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
-        next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
+        next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size,4,20,10).to(self.device)
         done_batch = torch.Tensor(done_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
 
         # Compute target value for each agents in each transition using the Bi-RNN
@@ -102,7 +92,7 @@ class DDPG:
             noise = (
                 torch.randn_like(action_batch) * self.policy_noise
             ).clamp(-self.noise_clip, self.noise_clip)
-            
+            print("noise.size()",noise.size(),"\nself.actor_target(next_state_batch).size()",self.actor_target(next_state_batch).size())
             target_next_actions = (
                 self.actor_target(next_state_batch) + noise
             ).clamp(-1, 1)

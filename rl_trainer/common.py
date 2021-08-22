@@ -102,12 +102,21 @@ def greedy_snake(state_map, beans, snakes, width, height, ctrl_agent_index):
     return actions
 
 
+def visual_ob(state):
+    image = np.zeros((20, 10))
+    for i in range(7):
+        snake_i = state[i+1] #[[7, 0], [0, 0], [7, 17], [0, 16], [3, 5]]
+        for cordinate in snake_i:#[7, 0]
+            image[cordinate[1]][cordinate[0]] = i+1
+    return image
+
 # Self position:        0:head_x; 1:head_y
 # Head surroundings:    2:head_up; 3:head_down; 4:head_left; 5:head_right
 # Beans positions:      (6, 7) (8, 9) (10, 11) (12, 13) (14, 15)
 # Other snake positions: (16, 17) (18, 19) (20, 21) (22, 23) (24, 25) -- (other_x - self_x, other_y - self_y)
 def get_observations(state, agents_index, obs_dim, height, width):
     state_copy = state.copy()
+    #image = visual_ob(state)
     board_width = state_copy['board_width']
     board_height = state_copy['board_height']
     beans_positions = state_copy[1]
@@ -141,7 +150,7 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][16:] = snake_heads.flatten()[:]
 
         #print(observations,type(observations))
-    return observations
+    return observations#,image
 
 
 def get_reward(info, snake_index, reward, score):
@@ -161,9 +170,9 @@ def get_reward(info, snake_index, reward, score):
         elif score == 0:   #平 一样长
             step_reward[i] = 0
 
-        if reward[i] > 0:
+        if reward[i] > 0:  #吃到
             step_reward[i] += 0.00020
-        else:
+        else:              #没吃到看距离
             self_head = np.array(snake_heads[i])
             dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
             step_reward[i] -= min(dists)
