@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import random
 from agent.rl.submission import agent, get_observations
+#from agent.rl.submission_image import agent, visual_ob
 from env.chooseenv import make
 from tabulate import tabulate
 import argparse
@@ -9,15 +10,22 @@ from torch.distributions import Categorical
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-
-def get_actions(state, algo, indexs):
+def get_actions(state, algo, indexs,memory):
 
     # random agent
     actions = np.random.randint(4, size=3)
 
     # rl agent
     if algo == 'rl':
-        obs = get_observations(state, indexs, obs_dim=26, height=10, width=20)
+        obs = get_observations(state, indexs, obs_dim=26, height=10, width=20)/10
+        #Memory
+        if len(memory) !=0: 
+            del memory[:1]
+            memory.append(obs)
+        else: 
+            for _ in range(4): 
+                memory.append(obs)
+        obs = np.stack(memory)
         logits = agent.choose_action(obs)
         logits = torch.Tensor(logits)
         actions = np.array([Categorical(out).sample().item() for out in logits])
@@ -25,11 +33,13 @@ def get_actions(state, algo, indexs):
     return actions
 
 
-def get_join_actions(obs, algo_list):
+def get_join_actions(obs, algo_list,memory):
     obs_2_evaluation = obs[0]
     indexs = [0,1,2,3,4,5]
-    first_action = get_actions(obs_2_evaluation, algo_list[0], indexs[:3])
-    second_action = get_actions(obs_2_evaluation, algo_list[1], indexs[3:])
+
+    first_action = get_actions(obs_2_evaluation, algo_list[0], indexs[:3],memory)
+    
+    second_action = get_actions(obs_2_evaluation, algo_list[1], indexs[3:],memory)
     actions = np.zeros(6)
     actions[:3] = first_action[:]
     actions[3:] = second_action[:]
@@ -40,6 +50,8 @@ def run_game(env, algo_list, episode, verbose=False):
 
     total_reward = np.zeros(6)
     num_win = np.zeros(3)
+    
+    memory = []
 
     for i in range(1, episode + 1):
         episode_reward = np.zeros(6)
@@ -49,7 +61,7 @@ def run_game(env, algo_list, episode, verbose=False):
         step = 0
 
         while True:
-            joint_action = get_join_actions(state, algo_list)
+            joint_action = get_join_actions(state, algo_list,memory)
 
             next_state, reward, done, _, info = env.step(env.encode(joint_action))
             reward = np.array(reward)
@@ -71,6 +83,7 @@ def run_game(env, algo_list, episode, verbose=False):
 
             state = next_state
             step += 1
+            memory = []
 
         total_reward += episode_reward
 

@@ -104,6 +104,8 @@ def main(args):
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
         obs = get_observations(state_to_training, ctrl_agent_index, obs_dim, height, width)/10
+        #print(obs)
+        print(type(obs))
 
         #Memory-beginning
         for _ in range(Memory_size): 
@@ -119,13 +121,13 @@ def main(args):
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
             logits = model.choose_action(obs)
-            print("logits",logits)
+            #print("logits",logits)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
             actions = logits_greedy(state_to_training, logits, height, width)
             # actions = logits_random(act_dim, logits)
-            print("actions",actions)
+            #print("actions",actions)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))

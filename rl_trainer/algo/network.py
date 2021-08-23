@@ -16,9 +16,15 @@ class Actor(nn.Module):
         self.act_dim = act_dim
         self.num_agents = num_agents
 
+        self.linear_1 = nn.Linear(obs_dim, obs_dim)
+        self.linear_2 = nn.Linear(obs_dim, obs_dim)
+
+        self.lstm = nn.LSTM(obs_dim , obs_dim , 1,batch_first=True)
+
         self.args = args
 
-        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
+        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE]
+        #sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
         middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
         sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
 
@@ -36,7 +42,11 @@ class Actor(nn.Module):
         self.post_dense = mlp(sizes_post, output_activation=output_activation)
 
     def forward(self, obs_batch):
-        out = self.prev_dense(obs_batch)
+        x = F.relu(self.linear_1(obs_batch))
+        x = F.relu(self.linear_2(obs_batch))
+        x,_ = self.lstm( x)
+        out = self.prev_dense(x)
+        #out = self.prev_dense(obs_batch)
 
         if self.args.algo == "bicnet":
             out = self.comm_net(out)
@@ -44,17 +54,21 @@ class Actor(nn.Module):
         out = self.post_dense(out)
         return out
 
-
 class Critic(nn.Module):
     def __init__(self, obs_dim, act_dim, num_agents, args):
         super().__init__()
-
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.num_agents = num_agents
 
+        #self.linear_1 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
+        #self.linear_2 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
+
+        #self.lstm = nn.LSTM(obs_dim + act_dim, obs_dim + act_dim, 1,batch_first=True)
+
         self.args = args
 
+        #sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE]
         sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
 
         if self.args.algo == "bicnet":
@@ -72,34 +86,19 @@ class Critic(nn.Module):
         self.post_dense_2 = mlp(sizes_post)
 
     def forward(self, obs_batch, action_batch):
-        out = torch.cat((obs_batch, action_batch), dim=-1)
-        out = self.prev_dense(out)
+        x = torch.cat((obs_batch, action_batch), dim=-1)
+        #x = F.relu(self.linear_1(x))
+        #x = F.relu(self.linear_2(x))
+        #x,_ = self.lstm( x)
+        #out = self.prev_dense(x)
+        out = self.prev_dense(x)
 
         if self.args.algo == "bicnet":
             out = self.comm_net(out)
 
         out_1 = self.post_dense_1(out)
         out_2 = self.post_dense_2(out)
-        return out_1,out_2 
-
-
-class DUTNet(nn.Module):
-    def __init__(self,
-                 input_size,
-                 hidden_size,
-                 batch_first=True,
-                 bidirectional=True):
-        super().__init__()
-
-        self.l1 = nn.Linear(input_size, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, hidden_size)
-
-    def forward(self, data, ):
-        x = F.relu(self.l1(data)) 
-        x = F.relu(self.l2(x)) 
-        output = F.relu(self.l3(x)) 
-        return output
+        return out_1,out_2
 
 
 

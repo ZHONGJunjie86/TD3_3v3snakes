@@ -154,32 +154,42 @@ def get_observations(state, agents_index, obs_dim, height, width):
 
 
 def get_reward(info, snake_index, reward, score):
+    #print(info['snakes_position'])
     snakes_position = np.array(info['snakes_position'], dtype=object)
     beans_position = np.array(info['beans_position'], dtype=object)
     snake_heads = [snake[0] for snake in snakes_position]
     step_reward = np.zeros(len(snake_index))
     for i in snake_index:
+        ###关于长度
         if score == 1:    #结束AI赢
             step_reward[i] += 0.05
         elif score == 2:   #结束random赢
             step_reward[i] -= 0.025
         elif score == 3:   #未结束AI长
-            step_reward[i] += 0.0010
+            step_reward[i] += 0.010
         elif score == 4:   #未结束random长
-            step_reward[i] -= 0.0005
+            step_reward[i] -= 0.005
         elif score == 0:   #平 一样长
             step_reward[i] = 0
-
+        
+        ###关于吃豆
         if reward[i] > 0:  #吃到
-            step_reward[i] += 0.00020
+            step_reward[i] += 0.02
         else:              #没吃到看距离
             self_head = np.array(snake_heads[i])
-            dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
-            step_reward[i] -= min(dists)
+            dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]
+            dists_body = []
+            for j in range (6):
+                if j != i:
+                    dists_body = [np.sqrt(np.sum(np.square(np.array(snakes_body) - np.array(snake_heads[i])))) 
+                                    for snakes_body in snakes_position]
+            if min(dists_body) >= 4:
+                step_reward[i] -= min(dists_bean)/1000
+                
             if reward[i] < 0:
-                step_reward[i] -= 0.00010
+                step_reward[i] -= 0.01
 
-    return step_reward
+    return step_reward*10
 
 
 def logits_random(act_dim, logits):
@@ -213,7 +223,8 @@ def logits_greedy(state, logits, height, width):
     snakes = snakes_positions_list
 
     logits = torch.Tensor(logits).to(device)
-    logits_action = np.array([Categorical(out).sample().item() for out in logits])
+    logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
+    #np.array([Categorical(out).sample().item() for out in logits])
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
 

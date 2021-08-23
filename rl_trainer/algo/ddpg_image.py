@@ -48,7 +48,7 @@ class DDPG:
         self.total_it = 0
         self.policy_noise = 0.05
         self.noise_clip = 0.5
-        self.policy_freq = 3
+        self.policy_freq = 2
 
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
@@ -79,41 +79,42 @@ class DDPG:
         # Sample a greedy_min mini-batch of M transitions from R
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
 
-        
-        state_batch = torch.Tensor(state_batch)
         state_batch = torch.Tensor(state_batch).reshape(self.batch_size,4,20,10).to(self.device)
         action_batch = torch.Tensor(action_batch).reshape(self.batch_size, 3, 4).to(self.device) #4,-1
         reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
         next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size,4,20,10).to(self.device)
         done_batch = torch.Tensor(done_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
+        #print("action_batch,reward_batch,done_batch\n",action_batch.size(),reward_batch.size(),done_batch.size())
 
         # Compute target value for each agents in each transition using the Bi-RNN
         with torch.no_grad():
             noise = (
                 torch.randn_like(action_batch) * self.policy_noise
             ).clamp(-self.noise_clip, self.noise_clip)
-            print("noise.size()",noise.size(),"\nself.actor_target(next_state_batch).size()",self.actor_target(next_state_batch).size())
+            #print("noise.size()",noise.size(),"\nself.actor_target(next_state_batch).size()",self.actor_target(next_state_batch).size())
             target_next_actions = (
                 self.actor_target(next_state_batch) + noise
             ).clamp(-1, 1)
 
             target_next_q_1,target_next_q_2 = self.critic_target(next_state_batch, target_next_actions)
             target_next_q = torch.min(target_next_q_1,target_next_q_2)
+            #print("target_next_q",target_next_q.size())
             q_hat = reward_batch + self.gamma * target_next_q * (1 - done_batch)
+            #print("q_hat",q_hat.size())
 
         # Compute critic gradient estimation according to Eq.(8)
         current_Q1,current_Q2 = self.critic(state_batch, action_batch)
+        #print("current_Q1,current_Q2",current_Q1.size(),current_Q2.size())
+        #print("current_Q1.size()",current_Q1.size()," q_hat.size()",q_hat.size())
         loss_critic = F.mse_loss(current_Q1, q_hat) + F.mse_loss(current_Q2, q_hat)
         #torch.nn.MSELoss()(q_hat, main_q)
 
         # Update the critic networks based on Adam
         self.critic_optimizer.zero_grad()
         loss_critic.backward()
-        clip_grad_norm_(self.critic.parameters(), 1)
+        #clip_grad_norm_(self.critic.parameters(), 1)
         self.critic_optimizer.step()
 
-        # Update the target networks
-        soft_update(self.critic, self.critic_target, self.tau)
 
         
         # Update the actor networks based on Adam
@@ -125,12 +126,14 @@ class DDPG:
             loss_actor = -x.mean()
             self.actor_optimizer.zero_grad()
             loss_actor.backward()
-            clip_grad_norm_(self.actor.parameters(), 1)
+            #clip_grad_norm_(self.actor.parameters(), 1)
             self.actor_optimizer.step()
 
             self.a_loss += loss_actor.item()
             self.c_loss += loss_critic.item()
-            
+
+            # Update the target networks
+            soft_update(self.critic, self.critic_target, self.tau)
             soft_update(self.actor, self.actor_target, self.tau)
         
         return self.c_loss, self.a_loss

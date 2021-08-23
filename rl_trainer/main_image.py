@@ -61,6 +61,8 @@ def main(args):
 
     memory  = Memory ()
     Memory_size = 4
+    
+    training_stage = 40
 
     torch.manual_seed(args.seed)
 
@@ -69,7 +71,7 @@ def main(args):
         0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
         0.000004, 0.000003, 0.000002, 0.000001]
     new_lr = 0.0001
-    training_stage = 40
+
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
     writer = SummaryWriter(str(log_dir))
@@ -125,7 +127,7 @@ def main(args):
             # we use rule-based greedy agent here. Or, you can switch to random agent.
             actions = logits_greedy(state_to_training, logits, height, width)
             #print(actions)
-            # actions = logits_random(act_dim, logits)
+            #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))
@@ -173,7 +175,7 @@ def main(args):
             obs = next_obs
             step += 1
 
-            if args.episode_length <= step or (True in done):
+            if args.episode_length <= step: # or (True in done)
 
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
@@ -195,9 +197,9 @@ def main(args):
                     model.save_model(run_dir, episode)
 
                 history_reward.append(np.sum(episode_reward[0:3]))
-                history_a_loss.append(model.a_loss/100)
-                history_c_loss.append(model.c_loss/100)
-                history_step_reward.append(total_step_reward/100)
+                history_a_loss.append(model.a_loss/10)
+                history_c_loss.append(model.c_loss)
+                history_step_reward.append(total_step_reward/10)
 
                 model.a_loss = 0
                 model.c_loss = 0
@@ -219,12 +221,12 @@ if __name__ == '__main__':
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
-    parser.add_argument('--tau', default=0.001, type=float)
+    parser.add_argument('--tau', default=0.005, type=float)
     parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
-    parser.add_argument('--batch_size', default=64, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 

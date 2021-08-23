@@ -8,7 +8,7 @@ import numpy as np
 
 
 HIDDEN_SIZE=256
-device =  torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else"cpu")  
 
 from typing import Union
 Activation = Union[str, nn.Module]
@@ -19,7 +19,7 @@ _str_to_activation = {
     'identity': nn.Identity(),
     'softmax': nn.Softmax(dim=-1),
 }
-
+        
 
 def mlp(sizes,
         activation: Activation = 'relu',
@@ -97,7 +97,6 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][16:] = snake_heads.flatten()[:]
     return observations
 
-
 class Actor(nn.Module):
     def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='softmax'):
         super().__init__()
@@ -108,7 +107,7 @@ class Actor(nn.Module):
 
         self.args = args
 
-        sizes_prev = [obs_dim, HIDDEN_SIZE]
+        sizes_prev = [obs_dim, HIDDEN_SIZE, HIDDEN_SIZE, HIDDEN_SIZE]
         sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
 
         self.prev_dense = mlp(sizes_prev)
@@ -141,7 +140,7 @@ class RLAgent(object):
         return action_to_env
 
     def load_model(self, filename):
-        self.actor.load_state_dict(torch.load(filename))
+        self.actor.load_state_dict(torch.load(filename, map_location='cpu')) #agent.torch.load(actor_net, map_location='cpu')
 
 
 def to_joint_action(action, ctrl_index):
@@ -159,10 +158,11 @@ def logits2action(logits):
     return np.array(actions)
 
 
-
-agent = RLAgent(26, 4, 3)
+Memory_size = 4
+agent = RLAgent(26*Memory_size, 4, 3)
 actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_2000.pth"
 agent.load_model(actor_net)
+memory = []
 
 
 def my_controller(observation_list, action_space_list, is_act_continuous):
@@ -173,6 +173,15 @@ def my_controller(observation_list, action_space_list, is_act_continuous):
     o_index = obs['controlled_snake_index']  # 2, 3, 4, 5, 6, 7 -> indexs = [0,1,2,3,4,5]
     o_indexs_min = 3 if o_index > 4 else 0
     indexs = [o_indexs_min, o_indexs_min+1, o_indexs_min+2]
-    observation = get_observations(obs, indexs, obs_dim, height=board_height, width=board_width)
+    observation = get_observations(obs, indexs, obs_dim, height=board_height, width=board_width)/10
+    #Memory
+    if len(memory) !=0: 
+        del memory[:1]
+        memory.append(observation)
+    else: 
+        for _ in range(Memory_size): 
+            memory.append(observation)
+    observation = np.hstack(memory)
+
     actions = agent.select_action_to_env(observation, indexs.index(o_index-2))
     return actions
