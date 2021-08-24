@@ -18,13 +18,8 @@ class Actor(nn.Module):
         self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=0) # 18816 -> 16632
         self.conv4 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=0) # 16632 -> 14464
 
-        self.linear_1_1 = nn.Linear(3584, 128) #14464 = 3584
-        self.linear_1_2 = nn.Linear(128,4)
-        self.linear_2_1 = nn.Linear(3584, 128) #14464 = 3584
-        self.linear_2_2 = nn.Linear(128,4)
-        self.linear_3_1 = nn.Linear(3584, 128) #14464 = 3584
-        self.linear_3_2 = nn.Linear(128,4)
-        #self.linear_CNN_3 = nn.Linear(24,4)
+        self.linear_1 = nn.Linear(3584, 128) #14464 = 3584
+        self.linear_2 = nn.Linear(128,12)
         
 
     def forward(self, tensor_cv): #,batch_size
@@ -42,15 +37,8 @@ class Actor(nn.Module):
         #action1 = F.relu(self.linear_CNN_2(x))
         #action = F.relu(self.linear_CNN_3(x))+1e-5
         #action = self.linear_CNN_3(x)   #.clamp(1e-10,1e10)
-        a_1 = F.relu(self.linear_1_1(x)) #.reshape(x.size()[0],3,128)
-        a_1 = F.relu(self.linear_1_2(a_1))
-        #print("a_1",a_1)
-        a_2 = F.relu(self.linear_2_1(x)) #.reshape(x.size()[0],3,128)
-        a_2 = F.relu(self.linear_2_2(a_2))
-        a_3 = F.relu(self.linear_3_1(x)) #.reshape(x.size()[0],3,128)
-        a_3 = F.relu(self.linear_3_2(a_3))
-        action = torch.vstack((a_1,a_2,a_3)).reshape(batch_size,3,4)
-        #print("action.size()",action.size())
+        x = F.relu(self.linear_1(x)) #.reshape(x.size()[0],3,128)
+        action = torch.tanh(self.linear_2(x)).reshape(batch_size,3,4)
 
         return action
 
@@ -69,12 +57,8 @@ class Critic(nn.Module):
         self.linear_2_1 = nn.Linear(32, 128)
         self.lstm_1 = nn.LSTM(128, 128, 1)
         #
-        self.linear_3_1_1 = nn.Linear(256,64)
-        self.linear_4_1_1 = nn.Linear(64,1)
-        self.linear_3_1_2 = nn.Linear(256,64)
-        self.linear_4_1_2 = nn.Linear(64,1)
-        self.linear_3_1_3 = nn.Linear(256,64)
-        self.linear_4_1_3 = nn.Linear(64,1)
+        self.linear_3_1 = nn.Linear(256,64)
+        self.linear_4_1 = nn.Linear(64,3)
         ##########################################
         self.conv1_2 = nn.Conv2d(4,8, kernel_size=3, stride=1, padding=1) # 20104 -> 20108
         self.conv2_2 = nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=0) # 20108 -> 18816
@@ -88,14 +72,7 @@ class Critic(nn.Module):
         self.lstm_2 = nn.LSTM(128, 128, 1)
         #
         self.linear_3_2 = nn.Linear(256,64)
-        self.linear_4_2 = nn.Linear(64,1)
-        #
-        self.linear_3_2_1 = nn.Linear(256,64)
-        self.linear_4_2_1 = nn.Linear(64,1)
-        self.linear_3_2_2 = nn.Linear(256,64)
-        self.linear_4_2_2 = nn.Linear(64,1)
-        self.linear_3_2_3 = nn.Linear(256,64)
-        self.linear_4_2_3 = nn.Linear(64,1)
+        self.linear_4_2 = nn.Linear(64,3)
 
 
     def forward(self, tensor_cv, action_batch):
@@ -117,13 +94,9 @@ class Critic(nn.Module):
         #
         #print("x y size",x.size(),y.size())
         z = torch.cat((x,y), dim=-1)
-        o_1 = torch.relu(self.linear_3_1_1(z))
-        o_1 = self.linear_4_1_1(o_1).reshape(1,batch_size)
-        o_2 = torch.relu(self.linear_3_1_2(z))
-        o_2 = self.linear_4_1_2(o_2).reshape(1,batch_size)
-        o_3 = torch.relu(self.linear_3_1_3(z))
-        o_3 = self.linear_4_1_3(o_3).reshape(1,batch_size)
-        out_1 = torch.vstack((o_1,o_2,o_3)).t().reshape(batch_size,3,1)
+        z = torch.relu(self.linear_3_1(z))
+        out_1 = torch.tanh(self.linear_4_1(z)).reshape(batch_size,3,1)
+        #out_1 = torch.vstack((o_1,o_2,o_3)).t().reshape(batch_size,3,1)
         #######################################################
         # CV
         x = F.relu(self.conv1_2(tensor_cv))
@@ -142,15 +115,10 @@ class Critic(nn.Module):
         #
         #print("x y size",x.size(),y.size())
         z = torch.cat((x,y), dim=-1)
-        o_1 = torch.relu(self.linear_3_2_1(z))
-        o_1 = self.linear_4_2_1(o_1).reshape(1,batch_size)
-        o_2 = torch.relu(self.linear_3_2_2(z))
-        o_2 = self.linear_4_2_2(o_2).reshape(1,batch_size)
-        o_3 = torch.relu(self.linear_3_2_3(z))
-        o_3 = self.linear_4_2_3(o_3).reshape(1,batch_size)
-        out_2 = torch.vstack((o_1,o_2,o_3)).t().reshape(batch_size,3,1)
+        z = torch.relu(self.linear_3_2(z))
+        out_2 = torch.tanh(self.linear_4_2(z)).reshape(batch_size,3,1)
 
-        return out_1,out_2 
+        return out_1,out_2
 
 
 
