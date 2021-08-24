@@ -97,6 +97,14 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][16:] = snake_heads.flatten()[:]
     return observations
 
+def visual_ob(state):
+    image = np.zeros((20, 10))
+    for i in range(7):
+        snake_i = state[i+1] #[[7, 0], [0, 0], [7, 17], [0, 16], [3, 5]]
+        for cordinate in snake_i:#[7, 0]
+            image[cordinate[1]][cordinate[0]] = i+1
+    return image
+
 class Actor(nn.Module):
     def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='softmax'):
         super().__init__()
@@ -117,7 +125,51 @@ class Actor(nn.Module):
         out = self.prev_dense(obs_batch)
         out = self.post_dense(out)
         return out
+        
+class Actor(nn.Module):
+    def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='tanh'):
+        super().__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.num_agents = num_agents
 
+        self.linear_1 = nn.Linear(obs_dim, obs_dim)
+        self.linear_2 = nn.Linear(obs_dim, obs_dim)
+
+        self.lstm = nn.LSTM(obs_dim , obs_dim , 1,batch_first=True)
+
+        self.args = args
+
+        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE]
+        #sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
+        middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
+        sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
+
+
+        if self.args.algo == "bicnet":
+            self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)
+            sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
+
+        elif self.args.algo == "ddpg":
+            sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
+
+        #print("actor prev_dense")
+        self.prev_dense = mlp(sizes_prev)
+        #print("actor post_dense")
+        self.post_dense = mlp(sizes_post, output_activation=output_activation)
+
+    def forward(self, obs_batch):
+        x = F.relu(self.linear_1(obs_batch))
+        x = F.relu(self.linear_2(obs_batch))
+        x,_ = self.lstm( x)
+        out = self.prev_dense(x)
+        #out = self.prev_dense(obs_batch)
+
+        if self.args.algo == "bicnet":
+            out = self.comm_net(out)
+
+        out = self.post_dense(out)
+        return out
 
 class RLAgent(object):
     def __init__(self, obs_dim, act_dim, num_agent):
@@ -159,7 +211,8 @@ def logits2action(logits):
 
 
 Memory_size = 4
-agent = RLAgent(26*Memory_size, 4, 3)
+#agent = RLAgent(26*Memory_size, 4, 3)
+agent = RLAgent(200*Memory_size, 4, 3)
 actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_2000.pth"
 agent.load_model(actor_net)
 memory = []

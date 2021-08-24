@@ -174,7 +174,7 @@ def get_reward(info, snake_index, reward, score):
         
         ###关于吃豆
         if reward[i] > 0:  #吃到
-            step_reward[i] += 0.02
+            step_reward[i] += 0.04
         else:              #没吃到看距离
             self_head = np.array(snake_heads[i])
             dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]

@@ -121,12 +121,12 @@ def main(args):
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
             logits = model.choose_action(obs)
-            #print(logits)
+            #print("logits",logits)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
             actions = logits_greedy(state_to_training, logits, height, width)
-            #print(actions)
+            #print("actions ",actions)
             #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
@@ -197,8 +197,8 @@ def main(args):
                     model.save_model(run_dir, episode)
 
                 history_reward.append(np.sum(episode_reward[0:3]))
-                history_a_loss.append(model.a_loss/10)
-                history_c_loss.append(model.c_loss)
+                history_a_loss.append(model.a_loss/100)
+                history_c_loss.append(model.c_loss/10)
                 history_step_reward.append(total_step_reward/10)
 
                 model.a_loss = 0

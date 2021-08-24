@@ -52,6 +52,7 @@ class Actor(nn.Module):
             out = self.comm_net(out)
 
         out = self.post_dense(out)
+        #print("out.size()",out.size())
         return out
 
 class Critic(nn.Module):

@@ -46,7 +46,7 @@ class DDPG:
         self.a_loss = 0
 
         self.total_it = 0
-        self.policy_noise = 0.05
+        self.policy_noise = 0.1
         self.noise_clip = 0.5
         self.policy_freq = 2
 
@@ -70,7 +70,7 @@ class DDPG:
             self.a_lr = new_lr
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
-            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*2)
+            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*3)
 
         if len(self.replay_buffer) < self.batch_size:
             return 0, 0
@@ -80,7 +80,9 @@ class DDPG:
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
 
         state_batch = torch.Tensor(state_batch).reshape(self.batch_size,4,20,10).to(self.device)
-        action_batch = torch.Tensor(action_batch).reshape(self.batch_size, 3, 4).to(self.device) #4,-1
+        action_batch = torch.Tensor(action_batch)
+        #print("action_batch.size()",action_batch.size())
+        action_batch = action_batch.reshape(self.batch_size,3,4).to(self.device) #4,-1
         reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
         next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size,4,20,10).to(self.device)
         done_batch = torch.Tensor(done_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)

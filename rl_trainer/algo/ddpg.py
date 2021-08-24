@@ -46,7 +46,7 @@ class DDPG:
         self.a_loss = 0
 
         self.total_it = 0
-        self.policy_noise = 0.05
+        self.policy_noise = self.a_lr*3000
         self.noise_clip = 0.5
         self.policy_freq = 2
 
@@ -65,7 +65,7 @@ class DDPG:
         action = self.actor(obs).cpu().detach().numpy()
         #print("ddpg action",action)
         action =action[0]
-        #print("ddpg action[0]",action)
+        #print("ddpg action[0].size()",action.size())
         return action
 
     def random_action(self):
@@ -82,7 +82,7 @@ class DDPG:
             self.a_lr = new_lr
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
-            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*2)
+            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*3)
 
         if len(self.replay_buffer) < self.batch_size:
             return 0, 0
@@ -110,6 +110,7 @@ class DDPG:
             ).clamp(-1, 1)
 
             target_next_q_1,target_next_q_2 = self.critic_target(next_state_batch, target_next_actions)
+            #print("target_next_q_1.size()",target_next_q_1.size())
             target_next_q = torch.min(target_next_q_1,target_next_q_2)
             
             #print("target_next_q",target_next_q.size())
@@ -148,6 +149,10 @@ class DDPG:
             # Update the target networks
             soft_update(self.critic, self.critic_target, self.tau)
             soft_update(self.actor, self.actor_target, self.tau)
+        
+        self.policy_noise = self.a_lr*3000
+        if self.policy_noise<0.01:
+            self.policy_noise = 0.01
         
         return self.c_loss, self.a_loss
 

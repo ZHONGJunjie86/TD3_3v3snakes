@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import random
-from agent.rl.submission import agent, get_observations
+from agent.rl.submission import agent, get_observations,visual_ob
 #from agent.rl.submission_image import agent, visual_ob
 from env.chooseenv import make
 from tabulate import tabulate
@@ -17,7 +17,9 @@ def get_actions(state, algo, indexs,memory):
 
     # rl agent
     if algo == 'rl':
-        obs = get_observations(state, indexs, obs_dim=26, height=10, width=20)/10
+        #obs = get_observations(state, indexs, obs_dim=26, height=10, width=20)/10
+        obs = visual_ob(state)/10
+        obs = [obs.flatten(),obs.flatten(),obs.flatten()]
         #Memory
         if len(memory) !=0: 
             del memory[:1]
@@ -28,7 +30,8 @@ def get_actions(state, algo, indexs,memory):
         obs = np.stack(memory)
         logits = agent.choose_action(obs)
         logits = torch.Tensor(logits)
-        actions = np.array([Categorical(out).sample().item() for out in logits])
+        actions = np.array([out.argmax(dim=0) for out in logits])
+        #actions = np.array([Categorical(out).sample().item() for out in logits])
 
     return actions
 
