@@ -10,8 +10,10 @@ from common import soft_update, hard_update, device
 import numpy as np
 
 from torch.distributions import Categorical
+from torch.distributions import Normal
 
 HIDDEN_SIZE = 256
+
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -34,8 +36,12 @@ class Actor(nn.Module):
 
         self.linear_1 = nn.Linear(3584, 256) #14464 = 3584
         self.linear_2 = nn.Linear(256,64)
-        self.linear_3 = nn.Linear(64,12)
-        
+        self.MU = nn.Linear(64,3)
+        self.STD = nn.Linear(64,3)
+
+        self.action_scale = 2
+        self.action_bias = 2        
+        self.epsilon = 1e-6
 
     def forward(self, tensor_cv): #,batch_size
         # CV
@@ -46,16 +52,23 @@ class Actor(nn.Module):
         x = x.reshape(1,3584)
         x = F.relu(self.linear_1(x))
         x = F.relu(self.linear_2(x))
-        x = F.relu(self.linear_3(x)).reshape(3,4).clamp(-1,1)+1
 
-        dist = Categorical(x)
-        action = dist.sample()
-        action_logprob = dist.log_prob(action)     
+        mean = self.MU(x)
+        std = self.STD(x).clamp(-20,2)
+        std = std.exp()
+        normal = Normal(mean, std)
+        
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+        y_t = torch.tanh(x_t)
+        action = y_t * self.action_scale + self.action_bias
+        log_prob = normal.log_prob(x_t)
+        # Enforcing Action Bound
+        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + self.epsilon)
+        log_prob = log_prob.sum(1, keepdim=True) 
 
-        entropy = -torch.exp(action_logprob) * action_logprob
+        entropy = -torch.exp(log_prob) * log_prob
 
-
-        return action.detach(),action_logprob,entropy
+        return action.detach(),log_prob,entropy
 
 
 
@@ -97,7 +110,7 @@ class Critic(nn.Module):
 class Actor_Critic:
     def __init__(self,args):
         
-        self.device = arg.device
+        self.device = device
         self.a_lr = args.a_lr
         self.c_lr = args.c_lr
         self.gama = 0.9
@@ -137,7 +150,6 @@ class Actor_Critic:
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
             self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
-        
         
         next_obs = torch.Tensor(next_obs).to(device)
 
