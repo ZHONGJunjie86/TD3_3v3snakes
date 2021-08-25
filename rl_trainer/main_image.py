@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.ddpg_image import DDPG
+from algo.TD3_image import TD3
 from common import *
 from log_path import *
 from env.chooseenv import make
@@ -77,7 +77,7 @@ def main(args):
     writer = SummaryWriter(str(log_dir))
     save_config(args, log_dir)
 
-    model = DDPG(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
+    model = TD3(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
     if args.load_model:
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))

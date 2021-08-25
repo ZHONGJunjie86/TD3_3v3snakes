@@ -11,7 +11,7 @@ from common import soft_update, hard_update, device
 from algo.network_image import Actor, Critic
 import torch.nn.functional as F
 
-class DDPG:
+class TD3:
     def __init__(self, obs_dim, act_dim, num_agent, args):
         self.obs_dim = obs_dim
         self.act_dim = act_dim

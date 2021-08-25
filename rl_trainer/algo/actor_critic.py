@@ -6,6 +6,7 @@ from common import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from common import soft_update, hard_update, device
 import numpy as np
 
 from torch.distributions import Categorical
@@ -96,7 +97,7 @@ class Critic(nn.Module):
 class Actor_Critic:
     def __init__(self,args):
         
-        self.device = device
+        self.device = arg.device
         self.a_lr = args.a_lr
         self.c_lr = args.c_lr
         self.gama = 0.9
@@ -136,6 +137,9 @@ class Actor_Critic:
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
             self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
+        
+        
+        next_obs = torch.Tensor(next_obs).to(device)
 
         value_next,_ = self.critic_next(next_obs,self.h_state)   #_next
 

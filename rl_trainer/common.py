@@ -223,8 +223,10 @@ def logits_greedy(state, logits, height, width):
     snakes = snakes_positions_list
 
     logits = torch.Tensor(logits).to(device)
-    logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
-    #np.array([Categorical(out).sample().item() for out in logits])
+    #logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
+    logits = logits.reshape(3,4)
+    #print(logits)
+    logits_action = np.array([Categorical(out).sample().item() for out in logits])
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
 
@@ -256,7 +258,7 @@ def logits_AC(state, logits, height, width):
     snakes = snakes_positions_list
 
     #logits = torch.Tensor(logits).to(device)
-    #logits = np.trunc((logits+1)*2)
+    logits = np.trunc(logits)
     logits_action = np.array([out for out in logits])
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])

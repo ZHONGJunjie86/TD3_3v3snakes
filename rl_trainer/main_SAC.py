@@ -7,19 +7,15 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.actor_critic import Actor_Critic
+from algo.SAC_image import SAC
 from common import *
 from log_path import *
 from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
-device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
-torch.set_default_tensor_type(torch.DoubleTensor)
-
 
 class Memory:
     def __init__(self):
@@ -80,7 +76,7 @@ def main(args):
     writer = SummaryWriter(str(log_dir))
     save_config(args, log_dir)
 
-    model = model = Actor_Critic(args)
+    model = SAC(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
     if args.load_model:
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
@@ -119,19 +115,17 @@ def main(args):
         step = 0
         episode_reward = np.zeros(6)
 
-        first_time = True
-
         while True:
 
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
-            logits = model.choose_action(obs,first_time)
-            #print("logits",logits)
+            logits = model.choose_action(obs)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
-            actions = logits_AC(state_to_training, logits, height, width) #logits_greedy(state_to_training, logits, height, width)
-            #print("actions ",actions)
+            actions = logits_AC(state_to_training, logits, height, width)
+            #print("actions",actions)
+            #print("logits",logits)
             #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
@@ -173,13 +167,12 @@ def main(args):
 
             # ================================== collect data ========================================
             # Store transition in R
-            #model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
-            
-            model.update(new_lr,next_obs,step_reward,done)
+            model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
+
+            model.update(new_lr)
 
             obs = next_obs
             step += 1
-            first_time = False
 
             if args.episode_length <= step: # or (True in done)
 
@@ -240,9 +233,23 @@ if __name__ == '__main__':
     parser.add_argument("--model_episode", default=0, type=int)
     parser.add_argument('--log_dir', default=datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))
 
+    #SAC
+    parser.add_argument('--alpha', type=float, default=0.2, metavar='G',
+                    help='Temperature parameter α determines the relative importance of the entropy\
+                            term against the reward (default: 0.2)')
+    parser.add_argument('--policy', default="Gaussian",
+                    help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
+    parser.add_argument('--eval', type=bool, default=True,
+                    help='Evaluates a policy a policy every 10 episode (default: True)')
+
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
     parser.add_argument("--load_model_run", default=2, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
+    parser.add_argument('--automatic_entropy_tuning', type=bool, default=False, metavar='G',
+                    help='Automaically adjust α (default: False)')
+    
+    parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',
+                    help='Value target update per no. of updates per step (default: 1)')
 
     args = parser.parse_args()
     main(args)
