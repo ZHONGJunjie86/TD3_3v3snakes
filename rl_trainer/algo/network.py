@@ -5,6 +5,7 @@ sys.path.append(str(base_dir))
 from common import *
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
 HIDDEN_SIZE = 256
 
@@ -19,12 +20,12 @@ class Actor(nn.Module):
         self.linear_1 = nn.Linear(obs_dim, obs_dim)
         self.linear_2 = nn.Linear(obs_dim, obs_dim)
 
-        self.lstm = nn.LSTM(obs_dim , obs_dim , 1,batch_first=True)
+        #self.lstm = nn.LSTM(obs_dim , obs_dim , 1,batch_first=True)
 
         self.args = args
 
-        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE]
-        #sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
+        #sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE]
+        sizes_prev = [obs_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
         middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
         sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
 
@@ -39,20 +40,26 @@ class Actor(nn.Module):
         #print("actor prev_dense")
         self.prev_dense = mlp(sizes_prev)
         #print("actor post_dense")
-        self.post_dense = mlp(sizes_post, output_activation=output_activation)
+        self.post_dense_1 = mlp(sizes_post, output_activation=output_activation)
+        self.post_dense_2 = mlp(sizes_post, output_activation=output_activation)
+        self.post_dense_3 = mlp(sizes_post, output_activation=output_activation)
 
     def forward(self, obs_batch):
-        x = F.relu(self.linear_1(obs_batch))
-        x = F.relu(self.linear_2(obs_batch))
-        x,_ = self.lstm( x)
-        out = self.prev_dense(x)
-        #out = self.prev_dense(obs_batch)
+        #x = F.relu(self.linear_1(obs_batch))
+        #x = F.relu(self.linear_2(obs_batch))
+        #x,_ = self.lstm( x)
+        #out = self.prev_dense(x)
+        batch_size = obs_batch.size()[0]
+        out = self.prev_dense(obs_batch)
 
         if self.args.algo == "bicnet":
             out = self.comm_net(out)
 
-        out = self.post_dense(out)
+        out_1 = self.post_dense_1(out)
+        out_2 = self.post_dense_2(out)
+        out_3 = self.post_dense_3(out)
         #print("out.size()",out.size())
+        out = torch.vstack((out_1,out_2,out_3)).reshape(batch_size,3,4)
         return out
 
 class Critic(nn.Module):
@@ -62,15 +69,15 @@ class Critic(nn.Module):
         self.act_dim = act_dim
         self.num_agents = num_agents
 
-        #self.linear_1 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
-        #self.linear_2 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
+        self.linear_1 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
+        self.linear_2 = nn.Linear(obs_dim + act_dim, obs_dim + act_dim)
 
-        #self.lstm = nn.LSTM(obs_dim + act_dim, obs_dim + act_dim, 1,batch_first=True)
+        self.lstm = nn.LSTM(obs_dim + act_dim, obs_dim + act_dim, 1,batch_first=True)
 
         self.args = args
 
-        #sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE]
-        sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
+        sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE]
+        #sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE,HIDDEN_SIZE,HIDDEN_SIZE]
 
         if self.args.algo == "bicnet":
             self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)

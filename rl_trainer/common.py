@@ -234,6 +234,40 @@ def logits_greedy(state, logits, height, width):
 
     return action_list
 
+def logits_AC(state, logits, height, width):
+    state_copy = state.copy()
+    board_width = state_copy['board_width']
+    board_height = state_copy['board_height']
+    beans_positions = state_copy[1]
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
+    state_ = np.array(snake_map)
+    state = np.squeeze(state_, axis=2)
+
+    beans = state_copy[1]
+    # beans = info['beans_position']
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snakes = snakes_positions_list
+
+    #logits = torch.Tensor(logits).to(device)
+    #logits = np.trunc((logits+1)*2)
+    logits_action = np.array([out for out in logits])
+
+    greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
+
+    action_list = np.zeros(6)
+    action_list[:3] = logits_action
+    action_list[3:] = greedy_action
+
+    return action_list
+
+
 
 def get_surrounding(state, width, height, x, y):
     surrounding = [state[(y - 1) % height][x],  # up

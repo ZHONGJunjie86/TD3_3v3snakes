@@ -7,15 +7,18 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.ddpg import DDPG
+from algo.actor_critic import Actor_Critic
 from common import *
 from log_path import *
 from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 
 class Memory:
@@ -49,7 +52,7 @@ def main(args):
 
     act_dim = env.get_action_dim()
     print(f'action dimension: {act_dim}')
-    obs_dim = 20*10
+    obs_dim = 26
     print(f'observation dimension: {obs_dim}')
 
     history_reward = []
@@ -77,7 +80,7 @@ def main(args):
     writer = SummaryWriter(str(log_dir))
     save_config(args, log_dir)
 
-    model = DDPG(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
+    model = model = Actor_Critic(args)
 
     if args.load_model:
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
@@ -106,35 +109,35 @@ def main(args):
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
         obs = visual_ob(state[0])/10
-        #obs = [obs.flatten(),obs.flatten(),obs.flatten()]
 
         #Memory-beginning
         for _ in range(Memory_size): 
             memory.m_obs.append(obs)
-        obs = np.hstack(memory.m_obs)
+        obs = np.stack(memory.m_obs)
 
         episode += 1
         step = 0
         episode_reward = np.zeros(6)
 
+        first_time = True
+
         while True:
 
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
-            logits = model.choose_action(obs)
+            logits = model.choose_action(obs,first_time)
             #print("logits",logits)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
-            actions = logits_greedy(state_to_training, logits, height, width)
-            # actions = logits_random(act_dim, logits)
-            #print("actions",actions)
+            actions = logits_AC(state_to_training, logits, height, width) #logits_greedy(state_to_training, logits, height, width)
+            #print("actions ",actions)
+            #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))
             next_state_to_training = next_state[0]
-            next_obs = visual_ob(next_state_to_training)/10
-            #next_obs = [next_obs.flatten(),next_obs.flatten(),next_obs.flatten()]
+            next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
             
             #Memory
             if len(memory.m_obs_next) !=0: 
@@ -144,7 +147,7 @@ def main(args):
                 memory.m_obs_next = memory.m_obs
                 memory.m_obs_next[Memory_size-1] = next_obs
 
-            next_obs = np.hstack(memory.m_obs_next)
+            next_obs = np.stack(memory.m_obs_next)
                 
             # ================================== reward shaping ========================================
             reward = np.array(reward)
@@ -170,14 +173,16 @@ def main(args):
 
             # ================================== collect data ========================================
             # Store transition in R
-            model.replay_buffer.push(obs, logits, step_reward, next_obs, done)
-
-            model.update(new_lr)
+            #model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
+            
+            next_obs = torch.Tensor(next_obs).to(device)
+            model.update(new_lr,next_obs,step_reward,done)
 
             obs = next_obs
             step += 1
+            first_time = False
 
-            if args.episode_length <= step :#or (True in done)
+            if args.episode_length <= step: # or (True in done)
 
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
@@ -199,8 +204,8 @@ def main(args):
                     model.save_model(run_dir, episode)
 
                 history_reward.append(np.sum(episode_reward[0:3]))
-                history_a_loss.append(model.a_loss/10)
-                history_c_loss.append(model.c_loss)
+                history_a_loss.append(model.a_loss/100)
+                history_c_loss.append(model.c_loss/10)
                 history_step_reward.append(total_step_reward/10)
 
                 model.a_loss = 0
@@ -223,7 +228,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
-    parser.add_argument('--tau', default=0.001, type=float)
+    parser.add_argument('--tau', default=0.005, type=float)
     parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
