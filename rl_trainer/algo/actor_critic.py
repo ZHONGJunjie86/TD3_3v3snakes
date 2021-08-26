@@ -158,6 +158,7 @@ class Actor_Critic:
         with torch.autograd.set_detect_anomaly(True):
             # TD:r(s) +  gama*v(s+1) - v(s)
             reward = torch.Tensor(reward).to(self.device)
+            done = torch.Tensor(done).to(self.device)
             advantage = reward.detach() + self.gama*value_next.detach() - self.value 
             loss_actor = -(self.log_prob * advantage.detach() + 5*self.a_lr *self.entropy).mean()
             loss_critic =torch.nn.SmoothL1Loss()(reward.detach() + self.gama*value_next.detach()*(1 - done) , self.value)

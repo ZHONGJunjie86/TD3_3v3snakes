@@ -14,6 +14,7 @@ from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -225,7 +226,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 
@@ -245,7 +246,7 @@ if __name__ == '__main__':
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
     parser.add_argument("--load_model_run", default=2, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
-    parser.add_argument('--automatic_entropy_tuning', type=bool, default=False, metavar='G',
+    parser.add_argument('--automatic_entropy_tuning', type=bool, default=True, metavar='G',
                     help='Automaically adjust α (default: False)')
     
     parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',

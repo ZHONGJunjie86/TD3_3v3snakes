@@ -47,7 +47,7 @@ class SAC:
             if self.automatic_entropy_tuning is True:
                 self.target_entropy = -torch.prod(torch.Tensor(3).to(self.device)).item() #action_space.shape
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-                self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=args.lr)
+                self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self.a_lr)
 
             self.actor = GaussianPolicy(obs_dim, act_dim,  num_agent, args).to(self.device)
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
@@ -94,6 +94,7 @@ class SAC:
             self.c_lr = new_lr
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
             self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
+            self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self.a_lr)
 
         if len(self.replay_buffer) < self.batch_size:
             return 0, 0
@@ -154,7 +155,7 @@ class SAC:
 
         self.a_loss += policy_loss.item()
         self.c_loss += qf1_loss.item() + qf2_loss.item()
-        self.alpha_loss += alpha_loss.item() + alpha_tlogs.item()
+        #self.alpha_loss += alpha_loss.item() + alpha_tlogs.item()
         
         return self.c_loss, self.a_loss
 

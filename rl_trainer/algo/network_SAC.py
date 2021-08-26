@@ -67,7 +67,7 @@ class QNetwork(nn.Module):
         x=  x.reshape(batch_size,1,3584)
         x = F.relu(self.linear_CNN_1_1(x))#.reshape(x.size()[0],3,128)
         x = F.relu(self.linear_CNN_2_1(x))
-        x,_ = self.lstm_1(x)
+        #x,_ = self.lstm_1(x)
         #
         action_batch = action_batch.reshape(batch_size,1,self.act_dim)
         y = F.relu(self.linear_1_1(action_batch))
@@ -88,7 +88,7 @@ class QNetwork(nn.Module):
         x=  x.reshape(batch_size,1,3584)#.repeat(1,3,1)
         x = F.relu(self.linear_CNN_1_2(x))#.reshape(x.size()[0],3,128)
         x = F.relu(self.linear_CNN_2_2(x))
-        x,_ = self.lstm_2(x)
+        #x,_ = self.lstm_2(x)
         #
         action_batch = action_batch.reshape(batch_size,1,self.act_dim)
         y = F.relu(self.linear_1_2(action_batch))

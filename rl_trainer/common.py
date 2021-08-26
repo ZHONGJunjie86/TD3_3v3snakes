@@ -159,35 +159,38 @@ def get_reward(info, snake_index, reward, score):
     beans_position = np.array(info['beans_position'], dtype=object)
     snake_heads = [snake[0] for snake in snakes_position]
     step_reward = np.zeros(len(snake_index))
+    
+    ###关于长度
     for i in snake_index:
-        ###关于长度
+        #周围距离
+        self_head = np.array(snake_heads[i])
+        dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]
+        dists_body = []
+        for j in range (6):
+            if j != i:
+                dists_body = [np.sqrt(np.sum(np.square(np.array(snakes_body) - np.array(snake_heads[i])))) 
+                                for snakes_body in snakes_position]
         if score == 1:    #结束AI赢
             step_reward[i] += 0.05
         elif score == 2:   #结束random赢
-            step_reward[i] -= 0.025
-        elif score == 3:   #未结束AI长
-            step_reward[i] += 0.010
-        elif score == 4:   #未结束random长
-            step_reward[i] -= 0.005
+            step_reward[i] -= 0.05
         elif score == 0:   #平 一样长
             step_reward[i] = 0
+        
+        if min(dists_body) >= 2:
+            if score == 3:   #未结束AI长
+                step_reward[i] += 0.02
+            elif score == 4:   #未结束random长
+                step_reward[i] -= 0.02
         
         ###关于吃豆
         if reward[i] > 0:  #吃到
             step_reward[i] += 0.04
         else:              #没吃到看距离
-            self_head = np.array(snake_heads[i])
-            dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]
-            dists_body = []
-            for j in range (6):
-                if j != i:
-                    dists_body = [np.sqrt(np.sum(np.square(np.array(snakes_body) - np.array(snake_heads[i])))) 
-                                    for snakes_body in snakes_position]
-            if min(dists_body) >= 4:
-                step_reward[i] -= min(dists_bean)/1000
-                
+            if min(dists_body) >= 2:
+                step_reward[i] -= max(min(dists_bean)/1000-0.003,0) #0.027 min(dists_bean)/1000
             if reward[i] < 0:
-                step_reward[i] -= 0.01
+                step_reward[i] -= 0.02
 
     return step_reward*10
 
