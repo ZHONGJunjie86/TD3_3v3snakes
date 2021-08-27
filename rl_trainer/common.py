@@ -188,7 +188,7 @@ def get_reward(info, snake_index, reward, score):
             step_reward[i] += 0.04
         else:              #没吃到看距离
             if min(dists_body) >= 2:
-                step_reward[i] -= max(min(dists_bean)/1000-0.003,0) #0.027 min(dists_bean)/1000
+                step_reward[i] -= max(min(dists_bean)/1000-0.002,0) #0.027 min(dists_bean)/1000
             if reward[i] < 0:
                 step_reward[i] -= 0.02
 

@@ -65,6 +65,9 @@ class Actor(nn.Module):
         # Enforcing Action Bound
         log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + self.epsilon)
         log_prob = log_prob.sum(1, keepdim=True) 
+        """mean =torch.diag( self.MU(x))
+        std = torch.diag(self.STD(x).clamp(-20,2).exp()).unsqueeze(0)
+        normal = MultivariateNormal(mean, std)"""
 
         entropy = -torch.exp(log_prob) * log_prob
 
