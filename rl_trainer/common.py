@@ -177,18 +177,18 @@ def get_reward(info, snake_index, reward, score):
         elif score == 0:   #平 一样长
             step_reward[i] = 0
         
-        if min(dists_body) >= 2:
-            if score == 3:   #未结束AI长
-                step_reward[i] += 0.02
-            elif score == 4:   #未结束random长
-                step_reward[i] -= 0.02
+        #if min(dists_body) >= 1:
+        elif score == 3:   #未结束AI长
+            step_reward[i] += 0.02
+        elif score == 4:   #未结束random长
+            step_reward[i] -= 0.02
         
         ###关于吃豆
         if reward[i] > 0:  #吃到
             step_reward[i] += 0.04
         else:              #没吃到看距离
-            if min(dists_body) >= 2:
-                step_reward[i] -= max(min(dists_bean)/1000-0.002,0) #0.027 min(dists_bean)/1000
+            #if min(dists_body) >= 1:
+            step_reward[i] -= max(min(dists_bean)/1000-0.002,0) #0.027 min(dists_bean)/1000
             if reward[i] < 0:
                 step_reward[i] -= 0.02
 
@@ -225,11 +225,12 @@ def logits_greedy(state, logits, height, width):
         snakes_positions_list.append(value)
     snakes = snakes_positions_list
 
+    
     logits = torch.Tensor(logits).to(device)
-    #logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
     logits = logits.reshape(3,4)
-    #print(logits)
     logits_action = np.array([Categorical(out).sample().item() for out in logits])
+    #logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
+    #print(logits)
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
 

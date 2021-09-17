@@ -46,9 +46,9 @@ class TD3:
         self.a_loss = 0
 
         self.total_it = 0
-        self.policy_noise = 0.1
-        self.noise_clip = 0.5
-        self.policy_freq = 2
+        self.policy_noise = 0.2 #std
+        self.noise_clip = 0.3
+        self.policy_freq = 3
 
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
@@ -108,7 +108,8 @@ class TD3:
         current_Q1,current_Q2 = self.critic(state_batch, action_batch)
         #print("current_Q1,current_Q2",current_Q1.size(),current_Q2.size())
         #print("current_Q1.size()",current_Q1.size()," q_hat.size()",q_hat.size())
-        loss_critic = F.mse_loss(current_Q1, q_hat) + F.mse_loss(current_Q2, q_hat)
+        loss_critic = torch.nn.SmoothL1Loss(current_Q1, q_hat) +  torch.nn.SmoothL1Loss(current_Q2, q_hat)
+        #F.mse_loss(current_Q1, q_hat) + F.mse_loss(current_Q2, q_hat)
         #torch.nn.MSELoss()(q_hat, main_q)
 
         # Update the critic networks based on Adam

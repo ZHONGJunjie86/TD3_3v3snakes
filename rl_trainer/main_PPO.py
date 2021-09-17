@@ -170,6 +170,10 @@ def main(args):
             
             model.memory.rewards.append(step_reward)
             model.memory.is_terminals.append(done)
+          
+            if step!=0 and step % 100 == 0:
+                model.update(new_lr)
+                model.memory.clear_memory()
 
             # ================================== collect data ========================================
             # Store transition in R
@@ -179,8 +183,6 @@ def main(args):
             step += 1
 
             if args.episode_length <= step: # or (True in done)
-                model.update(new_lr)
-
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
                       f'snake_2: {episode_reward[1]} snake_3: {episode_reward[2]}')
@@ -203,7 +205,7 @@ def main(args):
                 history_reward.append(np.sum(episode_reward[0:3]))
                 history_a_loss.append(model.a_loss/100)
                 history_c_loss.append(model.c_loss/10)
-                history_step_reward.append(total_step_reward/10)
+                history_step_reward.append(total_step_reward/1000) #10
 
                 model.a_loss = 0
                 model.c_loss = 0
@@ -221,7 +223,7 @@ if __name__ == '__main__':
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
     parser.add_argument('--max_episodes', default=1000, type=int) #50000
-    parser.add_argument('--episode_length', default=200, type=int)
+    parser.add_argument('--episode_length', default=2000, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5

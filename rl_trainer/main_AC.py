@@ -138,7 +138,7 @@ def main(args):
             next_state, reward, done, _, info = env.step(env.encode(actions))
             next_state_to_training = next_state[0]
             next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
-            
+            print(next_obs*10)
             #Memory
             if len(memory.m_obs_next) !=0: 
                 del memory.m_obs_next[:1]
@@ -169,7 +169,7 @@ def main(args):
             
             total_step_reward += sum(step_reward)
 
-            done = np.array([done] * ctrl_agent_num)
+            done = np.array([done] )* ctrl_agent_num
 
             # ================================== collect data ========================================
             # Store transition in R

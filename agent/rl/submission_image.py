@@ -7,6 +7,8 @@ from torch.distributions import Categorical
 import numpy as np
 import torch.nn.functional as F
 
+from torch.distributions import Normal
+
 
 HIDDEN_SIZE=256
 device = torch.device("cuda" if torch.cuda.is_available() else"cpu")  
@@ -52,31 +54,43 @@ def visual_ob(state):
 
 
 class Actor(nn.Module):
-    def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='tanh'):  #(n+2p-f)/s + 1 
+    def __init__(self):  #(n+2p-f)/s + 1 
         super(Actor, self).__init__()
         self.conv1 = nn.Conv2d(4,8, kernel_size=3, stride=1, padding=1) # 20104 -> 20108
         self.conv2 = nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=0) # 20108 -> 18816
         self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=0) # 18816 -> 16632
         self.conv4 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=0) # 16632 -> 14464
-        self.linear_CNN_1 = nn.Linear(3584, 384) #14464 = 3584
-        self.linear_CNN_2 = nn.Linear(128,24)
-        self.linear_CNN_3 = nn.Linear(24,4)
-        
+
+        self.linear_1 = nn.Linear(3584, 256) #14464 = 3584
+        self.linear_2 = nn.Linear(256,64)
+        self.MU = nn.Linear(64,3)
+        self.STD = nn.Linear(64,3)
+
+        self.action_scale = 2
+        self.action_bias = 2        
+        self.epsilon = 1e-6
 
     def forward(self, tensor_cv): #,batch_size
         # CV
-        x = F.relu(self.conv1(tensor_cv))
+        x = F.relu(self.conv1(tensor_cv.unsqueeze(0)))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        #print("",x.size()[0])
-        x=  x.reshape(x.size()[0],1,3584)
-        x = F.relu(self.linear_CNN_1(x)).reshape(x.size()[0],3,128)
-        x = F.relu(self.linear_CNN_2(x))
-        #action = F.relu(self.linear_CNN_3(x))+1e-5
-        action = self.linear_CNN_3(x).clamp(1e-10,1e10)
+        x = x.reshape(1,3584)
+        x = F.relu(self.linear_1(x))
+        x = F.relu(self.linear_2(x))
 
-        return action
+        mean = self.MU(x)
+        std = self.STD(x).clamp(-20,2)
+        std = std.exp()
+        normal = Normal(mean, std)
+        
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+        y_t = torch.tanh(x_t)
+        action = y_t * self.action_scale + self.action_bias
+
+        return action.clamp(0,3.99)
+
 
 
 class RLAgent(object):
@@ -89,8 +103,8 @@ class RLAgent(object):
         self.actor = Actor(obs_dim, act_dim, num_agent, self.output_activation).to(self.device)
 
     def choose_action(self, obs):
-        obs = torch.Tensor([obs]).to(self.device)
-        logits = self.actor(obs).cpu().detach().numpy()[0]
+        obs = torch.Tensor(obs).to(self.device) #[obs]
+        logits = self.actor(obs).cpu().detach().numpy()#[0]
         return logits
 
     def select_action_to_env(self, obs, ctrl_index):

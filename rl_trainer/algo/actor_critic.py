@@ -58,13 +58,13 @@ class Actor(nn.Module):
         std = std.exp()
         normal = Normal(mean, std)
         
-        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+        x_t = normal.sample()  # for reparameterization trick (mean + std * N(0,1))
         y_t = torch.tanh(x_t)
         action = y_t * self.action_scale + self.action_bias
         log_prob = normal.log_prob(x_t)
         # Enforcing Action Bound
-        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + self.epsilon)
-        log_prob = log_prob.sum(1, keepdim=True) 
+        #log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + self.epsilon)
+        #log_prob = log_prob.sum(1, keepdim=True) 
         """mean =torch.diag( self.MU(x))
         std = torch.diag(self.STD(x).clamp(-20,2).exp()).unsqueeze(0)
         normal = MultivariateNormal(mean, std)"""
@@ -106,7 +106,7 @@ class Critic(nn.Module):
         x = x.reshape(1,512)
 
         z = torch.relu(self.linear_3(x))
-        out = torch.tanh(self.linear_4(z)).reshape(1,3)
+        out = torch.tanh(self.linear_4(z)).reshape(1,3) #1
        
         return out,(h_state[0].data,h_state[1].data)
 
@@ -164,7 +164,7 @@ class Actor_Critic:
             done = torch.Tensor(done).to(self.device)
             advantage = reward.detach() + self.gama*value_next.detach() - self.value 
             loss_actor = -(self.log_prob * advantage.detach() + 5*self.a_lr *self.entropy).mean()
-            loss_critic =torch.nn.SmoothL1Loss()(reward.detach() + self.gama*value_next.detach()*(1 - done) , self.value)
+            loss_critic =torch.nn.SmoothL1Loss(reward.detach() + self.gama*value_next.detach()*(1 - done) , self.value)
 
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()

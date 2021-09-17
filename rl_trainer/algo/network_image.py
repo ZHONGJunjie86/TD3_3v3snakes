@@ -38,7 +38,7 @@ class Actor(nn.Module):
         #action = F.relu(self.linear_CNN_3(x))+1e-5
         #action = self.linear_CNN_3(x)   #.clamp(1e-10,1e10)
         x = F.relu(self.linear_1(x)) #.reshape(x.size()[0],3,128)
-        action = torch.tanh(self.linear_2(x)).reshape(batch_size,3,4)
+        action = torch.relu(self.linear_2(x)).reshape(batch_size,3,4)+1e-5
 
         return action
 
@@ -86,7 +86,7 @@ class Critic(nn.Module):
         x=  x.reshape(batch_size,1,3584)
         x = F.relu(self.linear_CNN_1_1(x))#.reshape(x.size()[0],3,128)
         x = F.relu(self.linear_CNN_2_1(x))
-        x,_ = self.lstm_1(x)
+        #x,_ = self.lstm_1(x)
         #
         action_batch = action_batch.reshape(batch_size,1,12)
         y = F.relu(self.linear_1_1(action_batch))

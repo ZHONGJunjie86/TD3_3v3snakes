@@ -221,12 +221,12 @@ if __name__ == '__main__':
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
-    parser.add_argument('--tau', default=0.005, type=float)
+    parser.add_argument('--tau', default=0.08, type=float)
     parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 

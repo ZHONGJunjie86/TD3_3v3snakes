@@ -73,7 +73,7 @@ class Actor(nn.Module):
 
         entropy = -torch.exp(log_prob) * log_prob
 
-        return action.detach(),log_prob,entropy
+        return action.clamp(0,3.99),log_prob,entropy
 
 class Critic(nn.Module):
     def __init__(self):
@@ -142,7 +142,7 @@ class PPO:
         self.a_loss = 0
         
         self.eps_clip = 0.2
-        self.K_epochs = 10
+        self.K_epochs = 4
 
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
@@ -150,7 +150,7 @@ class PPO:
         obs = torch.Tensor([obs]).to(self.device)
         action,action_logprob,_ = self.actor(obs)
         self.memory.actions.append(action)
-        self.memory.logprobs.append(action_logprob[0].detach().numpy())
+        self.memory.logprobs.append(action_logprob[0].cpu().detach().numpy())
         return action.cpu().detach().numpy()
 
     def update(self,new_lr):
@@ -197,7 +197,7 @@ class PPO:
             #Jθ'(θ) = E min { (P(a|s,θ)/P(a|s,θ') Aθ'(s,a)) , 
             #                         clip(P(a|s,θ)/P(a|s,θ'),1-ε,1+ε)Aθ'(s,a) }              θ' demonstration
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-            actor_loss = -(torch.min(surr1, surr2)  + 5*self.a_lr*dist_entropy).mean()
+            actor_loss = -(torch.min(surr1, surr2)  ).mean() #+ 5*self.a_lr*dist_entropy
             critic_loss =  self.SmoothL1Loss(state_values, rewards) #0.5*
             
             # take gradient step 
@@ -210,7 +210,7 @@ class PPO:
             self.actor_optimizer.step()
             self.critic_optimizer.step()
 
-        self.memory.clear_memory()
+        #self.memory.clear_memory()
 
         return self.c_loss, self.a_loss
 

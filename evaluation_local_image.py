@@ -27,9 +27,11 @@ def get_actions(state, algo, indexs,memory):
                 memory.append(obs)
         obs = np.stack(memory)
         logits = agent.choose_action(obs)
-        logits = torch.Tensor(logits)
-        actions = np.array([out.argmax(dim=0) for out in logits])
+        #logits = torch.Tensor(logits)
+        #actions = np.array([out.argmax(dim=0) for out in logits])
         #np.array([Categorical(out).sample().item() for out in logits])
+        logits = np.trunc(logits)
+        actions = np.array([out for out in logits])
 
     return actions
 
