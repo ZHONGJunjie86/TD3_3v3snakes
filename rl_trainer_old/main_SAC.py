@@ -14,7 +14,7 @@ from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -62,7 +62,7 @@ def main(args):
     memory  = Memory ()
     Memory_size = 4
     
-    training_stage = 2000
+    training_stage = 80
 
     torch.manual_seed(args.seed)
 
@@ -135,7 +135,7 @@ def main(args):
             next_state_to_training = next_state[0]
             next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
             
-            #Memory /home/j-zhong/work_place/SAC_history.png
+            #Memory
             if len(memory.m_obs_next) !=0: 
                 del memory.m_obs_next[:1]
                 memory.m_obs_next.append(next_obs)
@@ -169,9 +169,6 @@ def main(args):
 
             # ================================== collect data ========================================
             # Store transition in R
-            logits[1] = logits[1] + 4
-            logits[2] = logits[2] + 8
-            #print(logits)
             model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
 
 
@@ -179,8 +176,8 @@ def main(args):
             step += 1
             
             if args.episode_length <= step: # or (True in done)
-
                 model.update(new_lr)
+
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
                       f'snake_2: {episode_reward[1]} snake_3: {episode_reward[2]}')
@@ -217,21 +214,21 @@ def main(args):
                 break
 
 
-if __name__ == '__main__':  #7
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
-    parser.add_argument('--max_episodes', default=50000, type=int) #50000
+    parser.add_argument('--max_episodes', default=10000, type=int) #50000
     parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
-    parser.add_argument('--buffer_size', default=int(1e6), type=int) #1e5
-    parser.add_argument('--tau', default=0.01, type=float) #0.005
+    parser.add_argument('--buffer_size', default=int(1e5), type=int) #1e5
+    parser.add_argument('--tau', default=0.1, type=float) #0.005
     parser.add_argument('--gamma', default=0.9, type=float) #0.95
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
-    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 

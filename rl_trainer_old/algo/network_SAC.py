@@ -27,74 +27,81 @@ class QNetwork(nn.Module):
         self.act_dim = 3
 
         # Q1 architecture
-        self.conv1_1 = nn.Conv2d(4,16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 17108
-        self.conv2_1 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 17108 -> 141016
-        self.conv3_1 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 141016-> 111032
-        self.conv4_1 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 16632 -> 14464
-        #self.linear_CNN_1_1 = nn.Linear(2560, 3) #14464 = 3584
-        #self.linear_cnn_1 = nn.Linear(1280, 128)
+        self.conv1_1 = nn.Conv2d(4,4, kernel_size=3, stride=1, padding=1) # 20104 -> 20104
+        self.conv2_1 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 20104 -> 1888
+        self.conv3_1 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 1888 -> 16616
+        self.linear_cnn_1 = nn.Linear(800, 128)
         #
-        #self.linear_1_1 = nn.Linear(self.act_dim, 128)
-        #self.linear_2_1 = nn.Linear(128, 128)
+        self.linear_1_1 = nn.Linear(3, 32)
+        self.linear_2_1 = nn.Linear(32, 128)
         #
-        self.linear_1 = nn.Linear(1280,12)
+        self.linear_1 = nn.Linear(256,3)
         ##########################################
         # Q2 architecture
-        self.conv1_2 = nn.Conv2d(4,16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 17108
-        self.conv2_2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 17108 -> 141016
-        self.conv3_2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 141016-> 111032
-        self.conv4_2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 16632 -> 14464
-        #self.linear_cnn_2 = nn.Linear(1280, 128)
+        self.conv1_2 = nn.Conv2d(4,4, kernel_size=3, stride=1, padding=1) # 20104 -> 20104
+        self.conv2_2 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 20104 -> 1888
+        self.conv3_2 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 1888 -> 16616
+        self.linear_cnn_2 = nn.Linear(800, 128)
         #
-        #self.linear_1_2 = nn.Linear(self.act_dim, 128)
-        #self.linear_2_2 = nn.Linear(128, 128)
+        self.linear_1_2 = nn.Linear(3, 32)
+        self.linear_2_2 = nn.Linear(32, 128)
         #
-        self.linear_2 = nn.Linear(1280,12)
+        self.linear_2 = nn.Linear(256,3)
 
-    def forward(self, tensor_cv): #, action_batch
+    def forward(self, tensor_cv, action_batch):
         # CV
         batch_size = tensor_cv.size()[0]
         i = tensor_cv
         x = F.relu(self.conv1_1(i))
-        x = F.relu(self.conv2_1(x))
-        x = F.relu(self.conv3_1(x))
-        x = F.relu(self.conv4_1(x))
+        i = i + x
+        x = F.relu(self.conv2_1(i))
+        i = i + x
+        x = F.relu(self.conv3_1(i))
         #
-        x=  x.reshape(batch_size,1,1280)
-        #x = F.relu(self.linear_cnn_1(x))
+        x=  x.reshape(batch_size,1,800)
+        x = F.relu(self.linear_cnn_1(x))
+        #
+        action_batch = action_batch.reshape(batch_size,1,self.act_dim)
+        y = F.relu(self.linear_1_1(action_batch))
+        y = F.relu(self.linear_2_1(y))
         #
         #print("x y size",x.size(),y.size())
-        out_1 = torch.tanh(self.linear_1(x)).reshape(batch_size,1,12)
+        z = torch.cat((x,y), dim=-1)
+        out_1 = torch.tanh(self.linear_1(z)).reshape(batch_size,1,3)
         #out_1 = torch.vstack((o_1,o_2,o_3)).t().reshape(batch_size,3,1)
         #######################################################
         # CV
         i = tensor_cv
         x = F.relu(self.conv1_2(i))
-        #i = i + x
-        x = F.relu(self.conv2_2(x))
-        x = F.relu(self.conv3_2(x))
-        x = F.relu(self.conv4_2(x))
+        i = i + x
+        x = F.relu(self.conv2_2(i))
+        i = i + x
+        x = F.relu(self.conv3_2(i))
         #
-        x=  x.reshape(batch_size,1,1280)
-        #x = F.relu(self.linear_cnn_2(x))
+        x=  x.reshape(batch_size,1,800)
+        x = F.relu(self.linear_cnn_2(x))
+        #
+        action_batch = action_batch.reshape(batch_size,1,self.act_dim)
+        y = F.relu(self.linear_1_2(action_batch))
+        y = F.relu(self.linear_2_2(y))
         #
         #print("x y size",x.size(),y.size())
-        out_2 = torch.tanh(self.linear_2(x)).reshape(batch_size,1,12)
+        z = torch.cat((x,y), dim=-1)
+        out_2 = torch.tanh(self.linear_2(z)).reshape(batch_size,1,3)
 
         return out_1,out_2
 
 class GaussianPolicy(nn.Module):
     def __init__(self, obs_dim, act_dim, num_agent, args): #num_inputs, num_actions, hidden_dim, action_space=None
         super(GaussianPolicy, self).__init__()
-        self.device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
-        self.conv1 = nn.Conv2d(4,16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
-        self.conv2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
-        self.conv4 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        self.conv1 = nn.Conv2d(4,4, kernel_size=3, stride=1, padding=1) # 20104 -> 20104
+        self.conv2 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 20104 -> 20104
+        self.conv3 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1) # 20104 -> 20104
 
-        #self.mean_linear = nn.Linear(1280, 12)
-        #self.log_std_linear = nn.Linear(1280, 12)
-        self.linear = nn.Linear(1280, 12)
+        self.mean_linear = nn.Linear(800, 3)
+        self.log_std_linear = nn.Linear(800, 3)
+        #self.linear = nn.Linear(800, 12)
 
         self.apply(weights_init_)
 
@@ -119,20 +126,21 @@ class GaussianPolicy(nn.Module):
                 (action_space.high + action_space.low) / 2.)"""
 
     def forward(self, tensor_cv):
-        self.batch_size = tensor_cv.size()[0]
+        batch_size = tensor_cv.size()[0]
         i_1 = tensor_cv
         # CV
         x = F.relu(self.conv1(i_1))
-        #i_2 = i_1 + x
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x)).reshape(self.batch_size,1,1280)
-        x = self.linear(x)
+        i_2 = i_1 + x
+        x = F.relu(self.conv2(i_2))
+        i_3 = i_2 + x
+        x = F.relu(self.conv3(i_3))
+        i_4 = i_3 + x
+        i_4 = i_4.reshape(batch_size,1,800)
         
-        #mean = self.mean_linear(x)
-        #log_std = self.log_std_linear(x)
-        #log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
-        return x #mean, log_std
+        mean = self.mean_linear(i_4)
+        log_std = self.log_std_linear(i_4)
+        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
+        return mean, log_std
 
     #def to(self, device):
     #    self.action_scale = self.action_scale.to(self.device)
@@ -140,24 +148,24 @@ class GaussianPolicy(nn.Module):
     #    return super(GaussianPolicy, self).to(self.device)
 
     def sample(self, state):
-        action_probs = torch.softmax( self.forward(state).reshape(self.batch_size,3,4) ,dim =-1)
-        dis = self.Categorical(action_probs)
-        action_run = dis.sample()#.view(-1,1)
-        z = (action_probs == 0.0).float()*1e-8
-        
-        log_prob = torch.log(action_probs+z)
-        #action_run = y_t * self.action_scale + self.action_bias
+        mean, log_std = self.forward(state)
+        std = log_std.clamp(-20, 2).exp()
+        normal = Normal(mean, std)
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+        y_t = torch.tanh(x_t)
+        action_run = y_t * self.action_scale + self.action_bias
 
-        #log_prob = normal.log_prob(x_t)
+
+
         '''compute logprob according to mean and std of action (stochastic policy)'''
         # # self.sqrt_2pi_log = np.log(np.sqrt(2 * np.pi))
         # logprob = a_std_log + self.sqrt_2pi_log + noise.pow(2).__mul__(0.5)  # noise.pow(2) * 0.5
         # different from above (gradient)
-        """noise = torch.randn_like(mean, requires_grad=True)
+        noise = torch.randn_like(mean, requires_grad=True)
         action = mean + std * noise
-        #a_tan = action.tanh()
+        a_tan = action.tanh()
         delta = ((mean - action) / std).pow(2).__mul__(0.5)
-        log_prob = log_std + self.sqrt_2pi_log + delta"""
+        log_prob = log_std + self.sqrt_2pi_log + delta
         # same as below:
         # from torch.distributions.normal import Normal
         # logprob_noise = Normal(a_avg, a_std).logprob(a_noise)
@@ -177,7 +185,7 @@ class GaussianPolicy(nn.Module):
         #log_prob = log_prob.sum(1, keepdim=True)
         
 
-        return action_run, log_prob.reshape(self.batch_size,1,12), action_probs.reshape(self.batch_size,1,12) #x_t #mean
+        return action_run.clamp(0,3.99), log_prob, 0 #mean
 
 
 

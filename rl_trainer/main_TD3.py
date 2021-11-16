@@ -7,16 +7,16 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.SAC_image import SAC
+from algo.TD3_image import TD3
 from common import *
 from log_path import *
 from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 
 class Memory:
     def __init__(self):
@@ -68,31 +68,31 @@ def main(args):
 
     sample_lr = [
         0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
-        0.00002, 0.00001, 0.000009, 0.000008,0.000008,0.000008, 0.000007, 0.000006, 0.000005,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
         0.000004, 0.000003, 0.000002, 0.000001]
     new_lr = 0.0001
 
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
-    writer = SummaryWriter(str(log_dir))
+    writer = SummaryWriter(str(log_dir)) 
     save_config(args, log_dir)
 
-    model = SAC(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
+    model = TD3(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
-    if args.load_model:#True:#
+    if False: # True:#False 
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
         model.load_model(load_dir, episode=args.load_model_run_episode)
 
     episode = 0
-
+    start_traning = 0
+    
     while episode < args.max_episodes:
-        punishiment_lock = [6,6,6]
         if episode > training_stage  : 
             try:
                 new_lr = sample_lr[int(episode // training_stage)]
             except(IndexError):
                 new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
-
+        punishiment_lock = [6,6,6]
         # Receive initial observation state s1
         state = env.reset()
 
@@ -107,7 +107,6 @@ def main(args):
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
         obs = visual_ob(state[0])/10
-
         #Memory-beginning
         for _ in range(Memory_size): 
             memory.m_obs.append(obs)
@@ -118,7 +117,7 @@ def main(args):
         episode_reward = np.zeros(6)
 
         while True:
-
+            start_traning += 1
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
             logits = model.choose_action(obs)
@@ -126,8 +125,8 @@ def main(args):
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
-            actions = logits_AC(state_to_training, logits, height, width)
-            #print("actions",actions)
+            actions = logits_greedy(state_to_training, logits, height, width)
+            #print("actions ",actions)
             #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
@@ -135,7 +134,7 @@ def main(args):
             next_state_to_training = next_state[0]
             next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
             
-            #Memory /home/j-zhong/work_place/SAC_history.png
+            #Memory
             if len(memory.m_obs_next) !=0: 
                 del memory.m_obs_next[:1]
                 memory.m_obs_next.append(next_obs)
@@ -169,22 +168,20 @@ def main(args):
 
             # ================================== collect data ========================================
             # Store transition in R
-            logits[1] = logits[1] + 4
-            logits[2] = logits[2] + 8
-            #print(logits)
             model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
-
+            
+            #if start_traning>25e3:
+            #    model.update(new_lr)
 
             obs = next_obs
             step += 1
-            
-            if args.episode_length <= step: # or (True in done)
 
-                model.update(new_lr)
+            if args.episode_length <= step: # or (True in done)
+                model.update(new_lr)   
+
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
                       f'snake_2: {episode_reward[1]} snake_3: {episode_reward[2]}')
-                print("self.log_alpha",model.log_alpha)
 
                 reward_tag = 'reward'
                 loss_tag = 'loss'
@@ -215,9 +212,10 @@ def main(args):
                 env.reset()
                 memory.clear_memory()
                 break
+            
 
 
-if __name__ == '__main__':  #7
+if __name__ == '__main__':  #6
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
@@ -225,8 +223,8 @@ if __name__ == '__main__':  #7
     parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
-    parser.add_argument('--buffer_size', default=int(1e6), type=int) #1e5
-    parser.add_argument('--tau', default=0.01, type=float) #0.005
+    parser.add_argument('--buffer_size', default=int(1e6), type=int) #6e4
+    parser.add_argument('--tau', default=0.005, type=float) #0.08
     parser.add_argument('--gamma', default=0.9, type=float) #0.95
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
@@ -239,23 +237,9 @@ if __name__ == '__main__':  #7
     parser.add_argument("--model_episode", default=0, type=int)
     parser.add_argument('--log_dir', default=datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))
 
-    #SAC
-    parser.add_argument('--alpha', type=float, default=0.2, metavar='G',
-                    help='Temperature parameter α determines the relative importance of the entropy\
-                            term against the reward (default: 0.2)')
-    parser.add_argument('--policy', default="Gaussian",
-                    help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
-    parser.add_argument('--eval', type=bool, default=True,
-                    help='Evaluates a policy a policy every 10 episode (default: True)')
-
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
-    parser.add_argument("--load_model_run", default=1, type=int)
+    parser.add_argument("--load_model_run", default=9, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
-    parser.add_argument('--automatic_entropy_tuning', type=bool, default=True, metavar='G',
-                    help='Automaically adjust α (default: False)')
-    
-    parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',
-                    help='Value target update per no. of updates per step (default: 1)')
 
     args = parser.parse_args()
     main(args)

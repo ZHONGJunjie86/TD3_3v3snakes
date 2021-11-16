@@ -14,12 +14,6 @@ class ReplayBuffer:
             self.replay_buffer.pop(0)
         self.replay_buffer.append(transition_tuple)
 
-    def push_multi(self, tuple_batch):
-        self.replay_buffer.extend(tuple_batch)
-        
-        while len(self.replay_buffer) >= self.max_size:
-            self.replay_buffer.pop(0)
-
     def get_batches(self):
         sample_batch = random.sample(self.replay_buffer, self.batch_size)
 

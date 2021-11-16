@@ -7,12 +7,14 @@ import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
 from replay_buffer import ReplayBuffer
-from common import soft_update, hard_update, device
-from algo.network_SAC import *
+from common import soft_update, hard_update#, device
+from algo.network_SAC import GaussianPolicy,QNetwork
 import torch.nn.functional as F
 
+import torch.nn as nn
+
 class SAC:
-    def __init__(self, obs_dim, act_dim, num_agent, args):
+    def __init__(self, obs_dim, act_dim, num_agent, args,device):
         self.gamma = args.gamma
         self.tau = args.tau
         self.alpha = args.alpha
@@ -22,7 +24,7 @@ class SAC:
 
         self.policy_type = args.policy
         self.target_update_interval = args.target_update_interval
-        self.automatic_entropy_tuning = True#args.automatic_entropy_tuning
+        self.automatic_entropy_tuning = True #args.automatic_entropy_tuning
 
         self.obs_dim = obs_dim
         self.act_dim = act_dim
@@ -45,8 +47,8 @@ class SAC:
         if self.policy_type == "Gaussian":
             # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
             if self.automatic_entropy_tuning is True:
-                self.target_entropy = -3#np.log(3)#-np.log(1/3)#action_space.shape
-                self.log_alpha = torch.tensor(-5.3209, requires_grad=True, device=self.device) #-np.log(3) * np.e  -1.3542
+                self.target_entropy = -np.log(1/12)#-3 #np.log(3)#-np.log(1/3)#action_space.shape
+                self.log_alpha = torch.tensor(-200.0, requires_grad=True, device=self.device) #-np.log(3) * np.e  -1.3542
                 #torch.tensor((-np.log(action_dim) * np.e,), dtype=torch.float32,requires_grad=True, device=self.device)
                 self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self.a_lr)
 
@@ -88,22 +90,13 @@ class SAC:
 
     def update(self,new_lr):
         self.total_it += 1
-        
-
-        if new_lr != self.a_lr:
-            print("new_lr",new_lr)
-            self.a_lr = new_lr
-            self.c_lr = new_lr
-            self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
-            self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr)
-            self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self.a_lr)
 
         if len(self.replay_buffer) < 25e3:#self.batch_size:#
             return 0, 0
 
         k = 1.0 + len(self.replay_buffer) / 9e5
         #batch_size_ = int(self.batch_size * k)
-        train_steps = int(k * 50)
+        train_steps = int(k * 20)
 
         for i in range(train_steps):
 
@@ -141,11 +134,12 @@ class SAC:
             self.critic_optimizer.zero_grad()
             qf_loss.backward()
             self.critic_optimizer.step()
-
+        
+            ####################################
             _, log_pi, action_probs = self.actor.sample(state_batch)
 
             qf1_pi, qf2_pi = self.critic(state_batch)  #因为s是旧策略采集的，所以要reparameterize
-            min_qf_pi = torch.sum(torch.min(qf1_pi, qf2_pi)*action_probs,dim=1,keepdim = True)   # size 没变 ，sum无用
+            min_qf_pi = torch.sum(torch.min(qf1_pi, qf2_pi)*action_probs,dim=1,keepdim = True)
             #print("min_qf_pi.size()",min_qf_pi.size())
             entropies = -torch.sum(action_probs*log_pi,dim=1,keepdim=True)
             policy_loss = -((self.alpha * entropies) + min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
@@ -153,7 +147,8 @@ class SAC:
             self.actor_optimizer.zero_grad()
             policy_loss.backward()
             self.actor_optimizer.step()
-
+            
+            #################################
             if self.automatic_entropy_tuning:
                 #alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
                 alpha_loss = torch.mean(self.log_alpha * ( entropies.detach() - self.target_entropy).detach())#log_pi.detach()
@@ -173,10 +168,6 @@ class SAC:
             self.a_loss += policy_loss.item()
             self.c_loss += qf1_loss.item() + qf2_loss.item()
 
-            """for src_param, tgt_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                    tgt_param.data.copy_(
-                        src_param.data * self.tau + tgt_param.data * (1.0 - self.tau) 
-                    )"""
             #self.alpha_loss += alpha_loss.item() + alpha_tlogs.item()
         self.critic_target.load_state_dict(self.critic.state_dict())
         
@@ -184,6 +175,25 @@ class SAC:
 
     def get_loss(self):
         return self.c_loss, self.a_loss
+
+    def get_actor(self):
+        return self.actor
+    
+    def get_replay_buffer(self):
+        return self.replay_buffer
+    
+    def get_log_alpha(self):
+        return self.log_alpha
+
+    def push(self,obs, logits, step_reward,next_obs, done):
+        self.replay_buffer.push(obs, logits, step_reward,next_obs, done)
+    
+    def push_multi(self,tuple_batch):
+        self.replay_buffer.push_multi(tuple_batch)
+    
+    def reset_loss(self):
+        self.a_loss = 0
+        self.c_loss = 0
 
     def load_model(self, run_dir, episode):
         print(f'\nBegin to load model: ')
@@ -196,10 +206,10 @@ class SAC:
         print(f'Critic path: {model_critic_path}')
 
         if os.path.exists(model_critic_path) and os.path.exists(model_actor_path):
-            actor = torch.load(model_actor_path, map_location=device)
-            critic = torch.load(model_critic_path, map_location=device)
-            self.actor.load_state_dict(actor)
-            self.critic.load_state_dict(critic)
+            actor_temp = torch.load(model_actor_path, map_location=self.device)
+            critic_temp = torch.load(model_critic_path, map_location=self.device)
+            self.actor.load_state_dict(actor_temp)
+            self.critic.load_state_dict(critic_temp)
             print("Model loaded!")
         else:
             sys.exit(f'Model not founded!')
@@ -216,3 +226,58 @@ class SAC:
 
         model_critic_path = os.path.join(base_path, "critic_4000" + ".pth") #+ str(episode) 
         torch.save(self.critic.state_dict(), model_critic_path)
+
+
+
+class Worker(nn.Module):
+    def __init__(self, obs_dim, act_dim, num_agent, args,device): #num_inputs, num_actions, hidden_dim, action_space=None
+        super(Worker, self).__init__()
+        self.device = device
+        self.conv1 = nn.Conv2d(4,16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv4 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+
+        self.linear = nn.Linear(1280, 12)
+
+        # action rescaling
+        self.action_scale = 2
+        self.action_bias = 2
+
+        self.sqrt_2pi_log = np.log(np.sqrt(2 * np.pi))
+
+        self.batch_size = 0
+        
+        self.soft_max = nn.Softmax(dim=-1)
+        self.Categorical = torch.distributions.Categorical
+
+    def forward(self, tensor_cv):
+        self.batch_size = tensor_cv.size()[0]
+        i_1 = tensor_cv
+        # CV
+        x = F.relu(self.conv1(i_1))
+        #i_2 = i_1 + x
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x)).reshape(self.batch_size,1,1280)
+        x = self.linear(x)
+        
+        return x 
+
+    def sample(self, state):
+        action_probs = torch.softmax( self.forward(state).reshape(self.batch_size,3,4) ,dim =-1)
+        dis = self.Categorical(action_probs)
+        action_run = dis.sample()#.view(-1,1)
+        z = (action_probs == 0.0).float()*1e-8
+        
+        log_prob = torch.log(action_probs+z)
+        
+
+        return action_run, log_prob.reshape(self.batch_size,1,12), action_probs.reshape(self.batch_size,1,12) #x_t #mean
+
+    def choose_action(self, obs):
+            obs = torch.Tensor([obs]).to(self.device)
+
+            action, _, _ = self.sample(obs)
+
+            return action.cpu().detach().numpy()[0]

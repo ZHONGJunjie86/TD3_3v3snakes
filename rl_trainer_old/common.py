@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 import os
 import yaml
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 def hard_update(source, target):
     target.load_state_dict(source.state_dict())
@@ -163,13 +163,13 @@ def get_reward(info, snake_index, reward,punishiment_lock, score):\
     for i in snake_index:
         #周围距离
         self_head = np.array(snake_heads[i])
-        #dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]
+        dists_bean = [np.sqrt(np.sum(np.square(beans_head - self_head))) for beans_head in beans_position]
         dists_body = []
-        """for j in range (6):
+        for j in range (6):
             if j != i:
                 dists_body = [np.sqrt(np.sum(np.square(np.array(snakes_body) - np.array(snake_heads[i])))) 
                                 for snakes_body in snakes_position]
-        if score == 1:    #结束AI赢
+        """if score == 1:    #结束AI赢
             step_reward[i] += 0.05
         elif score == 2:   #结束random赢
             step_reward[i] -= 0.05
@@ -179,25 +179,25 @@ def get_reward(info, snake_index, reward,punishiment_lock, score):\
         if score == 4: #未结束random长
             ###关于吃豆
             if reward[i] > 0:  #吃到
-                step_reward[i] += 0.02        
-            """else:              #没吃到看距离 / 锁
+                step_reward[i] += 0.04        
+            else:              #没吃到看距离 / 锁
                 if min(dists_body) >= 2 and punishiment_lock[i] == 0:
                     #print("min(min(dists_bean)/100-0.01,0.02) ",min(min(dists_bean)/100-0.04,0.02) )
                     step_reward[i] -= min(min(dists_bean)/1000-0.003,0.004) 
 
                 if punishiment_lock[i]>0:
-                    step_reward[i] -= min(min(dists_bean)/1000-0.004,0)"""
+                    step_reward[i] -= min(min(dists_bean)/1000-0.004,0)
 
         else:   #平局或AI长
             if reward[i] > 0:  #吃到
-                step_reward[i] += 0.04        
-            """else:              #没吃到看距离 / 锁
+                step_reward[i] += 0.05        
+            else:              #没吃到看距离 / 锁
                 if min(dists_body) >= 2 and punishiment_lock[i] == 0:
                     #print("min(min(dists_bean)/100-0.01,0.02) ",min(min(dists_bean)/100-0.04,0.02) )
                     step_reward[i] -= min(min(dists_bean)/1000-0.005,0.002) #0.01?
 
                 if punishiment_lock[i]>0:
-                    step_reward[i] -= min(min(dists_bean)/1000-0.006,0)"""
+                    step_reward[i] -= min(min(dists_bean)/1000-0.006,0)
                 
         ###关于碰撞
         #if reward[i] < 0:
@@ -206,19 +206,16 @@ def get_reward(info, snake_index, reward,punishiment_lock, score):\
 
         ##关于对方碰撞
         if True in (reward[3:] <0):
-            step_reward[i] += 0.02 #0.01
+            step_reward[i] += 0.02
 
-        ##关于dui方分多
+        ##关于己方分多
         if np.sum(reward[:3]) > np.sum(reward[3:]):
-            step_reward[i] -= 0.04#step_reward[i] += 0.01#5
-        """elif np.sum(reward[:3]) == np.sum(reward[3:]):  #for 博弈
-            step_reward[i] -= 0
-        else:
-            step_reward[i] -= 0.02 #-0.015
+            step_reward[i] += 0.015
+            
         if info["hit"][i] == 1 or min(dists_body) < 2 or reward[i] > 0:
             punishiment_lock[i] = 6
         else:
-            punishiment_lock[i] = max(punishiment_lock[i] - 1, 0)"""
+            punishiment_lock[i] = max(punishiment_lock[i] - 1, 0)
 
     return step_reward*10
 
@@ -253,13 +250,12 @@ def logits_greedy(state, logits, height, width):
         snakes_positions_list.append(value)
     snakes = snakes_positions_list
 
-     
+    
     logits = torch.Tensor(logits).to(device)
     logits = logits.reshape(3,4)
-    #print(logits)
     logits_action = np.array([Categorical(out).sample().item() for out in logits])
     #logits_action = np.array([out.argmax(dim=0) for out in logits]) #-1每个行向量为一个
-        
+    #print(logits)
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
 

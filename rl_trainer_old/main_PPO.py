@@ -7,16 +7,18 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.SAC_image import SAC
+#from algo.PPO_image import PPO
+from algo.PPO_Dualclip import PPO
 from common import *
 from log_path import *
 from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 
 class Memory:
     def __init__(self):
@@ -62,13 +64,13 @@ def main(args):
     memory  = Memory ()
     Memory_size = 4
     
-    training_stage = 2000
+    training_stage = 90
 
     torch.manual_seed(args.seed)
 
     sample_lr = [
         0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
-        0.00002, 0.00001, 0.000009, 0.000008,0.000008,0.000008, 0.000007, 0.000006, 0.000005,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
         0.000004, 0.000003, 0.000002, 0.000001]
     new_lr = 0.0001
 
@@ -77,7 +79,7 @@ def main(args):
     writer = SummaryWriter(str(log_dir))
     save_config(args, log_dir)
 
-    model = SAC(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
+    model = PPO(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
     if args.load_model:#True:#
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
@@ -86,7 +88,9 @@ def main(args):
     episode = 0
 
     while episode < args.max_episodes:
+
         punishiment_lock = [6,6,6]
+        
         if episode > training_stage  : 
             try:
                 new_lr = sample_lr[int(episode // training_stage)]
@@ -118,24 +122,24 @@ def main(args):
         episode_reward = np.zeros(6)
 
         while True:
-
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
             logits = model.choose_action(obs)
-            #print("logits",logits)
+            #print("logits: ",logits)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
             actions = logits_AC(state_to_training, logits, height, width)
-            #print("actions",actions)
+            #print("actions: ",actions)
             #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))
+            
             next_state_to_training = next_state[0]
             next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
             
-            #Memory /home/j-zhong/work_place/SAC_history.png
+            #Memory
             if len(memory.m_obs_next) !=0: 
                 del memory.m_obs_next[:1]
                 memory.m_obs_next.append(next_obs)
@@ -157,34 +161,39 @@ def main(args):
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=0) #平
             else:"""
             if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):   #AI长
-                step_reward = get_reward(info, ctrl_agent_index, reward, punishiment_lock,score=3)
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=3)
             elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):  #random长
-                step_reward = get_reward(info, ctrl_agent_index, reward, punishiment_lock,score=4)
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=4)
             else:                                                          #一样长
-                step_reward = get_reward(info, ctrl_agent_index, reward, punishiment_lock,score=0)
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=0)
             
             total_step_reward += sum(step_reward)
 
+
             done = np.array([done] * ctrl_agent_num)
+            
+            model.memory.rewards.append(step_reward)
+            model.memory.is_terminals.append(done)
+          
+            
 
             # ================================== collect data ========================================
             # Store transition in R
-            logits[1] = logits[1] + 4
-            logits[2] = logits[2] + 8
-            #print(logits)
-            model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
-
+            #model.replay_buffer.push(obs, logits, step_reward,next_obs, done) #[obs,obs,obs][next_obs,next_obs,next_obs]
 
             obs = next_obs
             step += 1
-            
-            if args.episode_length <= step: # or (True in done)
 
+            if step!=0 and step % 50 == 0:
                 model.update(new_lr)
+                model.memory.clear_memory()
+
+            if args.episode_length <= step: # or (True in done)
+                #model.update(new_lr)
+                #model.memory.clear_memory()
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
                       f'snake_2: {episode_reward[1]} snake_3: {episode_reward[2]}')
-                print("self.log_alpha",model.log_alpha)
 
                 reward_tag = 'reward'
                 loss_tag = 'loss'
@@ -203,8 +212,8 @@ def main(args):
 
                 history_reward.append(np.sum(episode_reward[0:3]))
                 history_a_loss.append(model.a_loss/100)
-                history_c_loss.append(model.c_loss/10)
-                history_step_reward.append(total_step_reward/100)
+                history_c_loss.append(model.c_loss/10) #10
+                history_step_reward.append(total_step_reward/100) #10
 
                 model.a_loss = 0
                 model.c_loss = 0
@@ -217,21 +226,21 @@ def main(args):
                 break
 
 
-if __name__ == '__main__':  #7
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
-    parser.add_argument('--max_episodes', default=50000, type=int) #50000
+    parser.add_argument('--max_episodes', default=5000, type=int) #50000
     parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
-    parser.add_argument('--buffer_size', default=int(1e6), type=int) #1e5
-    parser.add_argument('--tau', default=0.01, type=float) #0.005
-    parser.add_argument('--gamma', default=0.9, type=float) #0.95
+    parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
+    parser.add_argument('--tau', default=0.005, type=float)
+    parser.add_argument('--gamma', default=0.95, type=float)  #0.95
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
-    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--epsilon', default=0.5, type=float)
     parser.add_argument('--epsilon_speed', default=0.993, type=float) #0.99998
 
@@ -239,23 +248,9 @@ if __name__ == '__main__':  #7
     parser.add_argument("--model_episode", default=0, type=int)
     parser.add_argument('--log_dir', default=datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))
 
-    #SAC
-    parser.add_argument('--alpha', type=float, default=0.2, metavar='G',
-                    help='Temperature parameter α determines the relative importance of the entropy\
-                            term against the reward (default: 0.2)')
-    parser.add_argument('--policy', default="Gaussian",
-                    help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
-    parser.add_argument('--eval', type=bool, default=True,
-                    help='Evaluates a policy a policy every 10 episode (default: True)')
-
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
     parser.add_argument("--load_model_run", default=1, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
-    parser.add_argument('--automatic_entropy_tuning', type=bool, default=True, metavar='G',
-                    help='Automaically adjust α (default: False)')
-    
-    parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',
-                    help='Value target update per no. of updates per step (default: 1)')
 
     args = parser.parse_args()
     main(args)

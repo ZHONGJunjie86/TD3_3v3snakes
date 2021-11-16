@@ -56,40 +56,30 @@ def visual_ob(state):
 class Actor(nn.Module):
     def __init__(self):  #(n+2p-f)/s + 1 
         super(Actor, self).__init__()
-        self.conv1 = nn.Conv2d(4,8, kernel_size=3, stride=1, padding=1) # 20104 -> 20108
-        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=0) # 20108 -> 18816
-        self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=0) # 18816 -> 16632
-        self.conv4 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=0) # 16632 -> 14464
+        self.conv1 = nn.Conv2d(4,16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
+        self.conv4 = nn.Conv2d(16, 16, kernel_size=(6,3), stride=1, padding=1) # 20104 -> 20104
 
-        self.linear_1 = nn.Linear(3584, 256) #14464 = 3584
-        self.linear_2 = nn.Linear(256,64)
-        self.MU = nn.Linear(64,3)
-        self.STD = nn.Linear(64,3)
+        self.linear = nn.Linear(1280, 12)
 
-        self.action_scale = 2
-        self.action_bias = 2        
-        self.epsilon = 1e-6
+        self.soft_max = nn.Softmax(dim=-1)
+        self.Categorical = torch.distributions.Categorical
 
     def forward(self, tensor_cv): #,batch_size
         # CV
-        x = F.relu(self.conv1(tensor_cv.unsqueeze(0)))
+        x = F.relu(self.conv1(tensor_cv))
+        #i_2 = i_1 + x
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = x.reshape(1,3584)
-        x = F.relu(self.linear_1(x))
-        x = F.relu(self.linear_2(x))
-
-        mean = self.MU(x)
-        std = self.STD(x).clamp(-20,2)
-        std = std.exp()
-        normal = Normal(mean, std)
+        x = F.relu(self.conv4(x)).reshape(1,1,1280)
+        x = self.linear(x).reshape(1,3,4)
         
-        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
-        y_t = torch.tanh(x_t)
-        action = y_t * self.action_scale + self.action_bias
+        action_probs = torch.softmax(x ,dim =-1)
+        dis = self.Categorical(action_probs)
+        action_run = dis.sample()
 
-        return action.clamp(0,3.99)
+        return action_run.reshape(1,3)
 
 
 
@@ -100,17 +90,17 @@ class RLAgent(object):
         self.num_agent = num_agent
         self.device = device
         self.output_activation = 'softmax'
-        self.actor = Actor(obs_dim, act_dim, num_agent, self.output_activation).to(self.device)
+        self.actor = Actor().to(self.device) #obs_dim, act_dim, num_agent, self.output_activation
 
     def choose_action(self, obs):
-        obs = torch.Tensor(obs).to(self.device) #[obs]
+        obs = torch.Tensor([obs]).to(self.device) #[obs]
         logits = self.actor(obs).cpu().detach().numpy()#[0]
         return logits
 
     def select_action_to_env(self, obs, ctrl_index):
         logits = self.choose_action(obs)
-        actions = logits2action(logits)
-        action_to_env = to_joint_action(actions, ctrl_index)
+        #actions = logits2action(logits)
+        action_to_env = to_joint_action(logits, ctrl_index)
         return action_to_env
 
     def load_model(self, filename):
@@ -134,7 +124,7 @@ def logits2action(logits):
 
 Memory_size = 4
 agent = RLAgent(26*Memory_size, 4, 3)
-actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_2000.pth"
+actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_4000.pth"
 agent.load_model(actor_net)
 memory = []
 
@@ -148,7 +138,7 @@ def my_controller(observation_list, action_space_list, is_act_continuous):
     o_indexs_min = 3 if o_index > 4 else 0
     indexs = [o_indexs_min, o_indexs_min+1, o_indexs_min+2]
 
-    observation = visual_ob(obs[0])/10
+    observation = visual_ob(obs)/10
     #observation = get_observations(obs, indexs, obs_dim, height=board_height, width=board_width)/10
 
     #Memory

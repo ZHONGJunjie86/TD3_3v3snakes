@@ -7,7 +7,8 @@ from pathlib import Path
 import sys
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
-from algo.PPO_image import PPO
+#from algo.PPO_image import PPO
+from algo.PPO_Dualclip import PPO
 from common import *
 from log_path import *
 from env.chooseenv import make
@@ -18,6 +19,7 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+evice = torch.device("cuda:2") if torch.cuda.is_available() else torch.device("cpu")
 
 class Memory:
     def __init__(self):
@@ -63,13 +65,14 @@ def main(args):
     memory  = Memory ()
     Memory_size = 4
     
-    training_stage = 40
+    training_stage = 2000
 
     torch.manual_seed(args.seed)
 
     sample_lr = [
         0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
-        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.00002, 0.00001, 0.000009, 0.000008,0.000008,0.000008,0.000008, 
+        0.000007, 0.000006, 0.000005,
         0.000004, 0.000003, 0.000002, 0.000001]
     new_lr = 0.0001
 
@@ -80,13 +83,16 @@ def main(args):
 
     model = PPO(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
-    if args.load_model:
+    if args.load_model:#True:#
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
         model.load_model(load_dir, episode=args.load_model_run_episode)
 
     episode = 0
 
     while episode < args.max_episodes:
+
+        punishiment_lock = [6,6,6]
+        
         if episode > training_stage  : 
             try:
                 new_lr = sample_lr[int(episode // training_stage)]
@@ -148,20 +154,20 @@ def main(args):
             # ================================== reward shaping ========================================
             reward = np.array(reward)
             episode_reward += reward
-            if done:  #结束
+            """if done:  #结束
                 if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]): #AI赢
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=1)
                 elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):   #random赢
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=2)
                 else:
                     step_reward = get_reward(info, ctrl_agent_index, reward, score=0) #平
-            else:
-                if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):   #AI长
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=3)
-                elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):  #random长
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=4)
-                else:                                                          #一样长
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+            else:"""
+            if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):   #AI长
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=3)
+            elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):  #random长
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=4)
+            else:                                                          #一样长
+                step_reward = get_reward(info, ctrl_agent_index, reward,punishiment_lock, score=0)
             
             total_step_reward += sum(step_reward)
 
@@ -171,9 +177,7 @@ def main(args):
             model.memory.rewards.append(step_reward)
             model.memory.is_terminals.append(done)
           
-            if step!=0 and step % 100 == 0:
-                model.update(new_lr)
-                model.memory.clear_memory()
+            
 
             # ================================== collect data ========================================
             # Store transition in R
@@ -182,7 +186,13 @@ def main(args):
             obs = next_obs
             step += 1
 
+            if step!=0 and step % 50 == 0:
+                model.update(new_lr)
+                model.memory.clear_memory()
+
             if args.episode_length <= step: # or (True in done)
+                #model.update(new_lr)
+                #model.memory.clear_memory()
                 print(f'[Episode {episode:05d}] total_reward: {np.sum(episode_reward[0:3]):} epsilon: {model.eps:.2f}')
                 print(f'\t\t\t\tsnake_1: {episode_reward[0]} '
                       f'snake_2: {episode_reward[1]} snake_3: {episode_reward[2]}')
@@ -204,8 +214,8 @@ def main(args):
 
                 history_reward.append(np.sum(episode_reward[0:3]))
                 history_a_loss.append(model.a_loss/100)
-                history_c_loss.append(model.c_loss/10)
-                history_step_reward.append(total_step_reward/1000) #10
+                history_c_loss.append(model.c_loss/10) #10
+                history_step_reward.append(total_step_reward/100) #10
 
                 model.a_loss = 0
                 model.c_loss = 0
@@ -216,19 +226,19 @@ def main(args):
                 env.reset()
                 memory.clear_memory()
                 break
-
+#/home/j-zhong/work_place/TD3_SAC_PPO_multi_Python/rl_trainer/PPO_history.png
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
-    parser.add_argument('--max_episodes', default=1000, type=int) #50000
-    parser.add_argument('--episode_length', default=2000, type=int)
+    parser.add_argument('--max_episodes', default=50000, type=int) #50000
+    parser.add_argument('--episode_length', default=200, type=int)
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(6e4), type=int) #1e5
     parser.add_argument('--tau', default=0.005, type=float)
-    parser.add_argument('--gamma', default=0.95, type=float)
+    parser.add_argument('--gamma', default=0.9, type=float)  #0.95
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
@@ -241,7 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_dir', default=datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))
 
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
-    parser.add_argument("--load_model_run", default=2, type=int)
+    parser.add_argument("--load_model_run", default=1, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
 
     args = parser.parse_args()

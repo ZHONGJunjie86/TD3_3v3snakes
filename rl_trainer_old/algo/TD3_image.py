@@ -46,8 +46,8 @@ class TD3:
         self.a_loss = 0
 
         self.total_it = 0
-        self.policy_noise = 0.05 #*self.a_lr*10000 #std
-        self.noise_clip = 0.1  #*self.a_lr*10000
+        self.policy_noise = 0.2 #*self.a_lr*10000 #std
+        self.noise_clip = 0.4   #*self.a_lr*10000
         self.policy_freq = 2
 
         self.training_times = 1
@@ -55,9 +55,8 @@ class TD3:
     # Random process N using epsilon greedy
     def choose_action(self, obs, evaluation=False):
         obs = torch.Tensor([obs]).to(self.device)
-        action = self.actor(obs)
-        action = (action+1).clamp(1e-6,2)
-        return action.cpu().detach().numpy()[0]
+        action = self.actor(obs).cpu().detach().numpy()[0]
+        return action
 
     def random_action(self):
         if self.output_activation == 'tanh':
@@ -77,14 +76,10 @@ class TD3:
             self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),  self.a_lr)
             self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),  self.c_lr*3)
 
-        if len(self.replay_buffer) < 25e3:#self.batch_size:
+        if len(self.replay_buffer) < self.batch_size:
             return 0, 0
 
-        k = 1.0 + len(self.replay_buffer) / 1e6
-        #batch_size_ = int(self.batch_size * k)
-        self.training_times = int(k * 100)
-        
-        for i in range(self.training_times): #self.training_times
+        for i in range(self.training_times):
             #self.total_it += 1
             # Sample a greedy_min mini-batch of M transitions from R
             state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
@@ -128,9 +123,11 @@ class TD3:
             #clip_grad_norm_(self.critic.parameters(), 1)
             self.critic_optimizer.step()
 
+
+            
             # Update the actor networks based on Adam
             # Delayed policy updates
-            if i% self.policy_freq == 0: #i self.training_times 
+            if i % self.policy_freq == 0: #
                 #print("train Policy")
                 #self.total_it = 0
                 # Compute actor gradient estimation according to Eq.(7)
@@ -146,11 +143,9 @@ class TD3:
                 self.c_loss += loss_critic.item()
 
                 # Update the target networks
-                #soft_update(self.critic, self.critic_target, self.tau)
-                #soft_update(self.actor, self.actor_target, self.tau)
-        self.critic_target.load_state_dict(self.critic.state_dict())
-        self.actor_target.load_state_dict(self.actor.state_dict())
-
+                soft_update(self.critic, self.critic_target, self.tau)
+                soft_update(self.actor, self.actor_target, self.tau)
+            
         return self.c_loss, self.a_loss
 
     def get_loss(self):

@@ -1,5 +1,6 @@
 import argparse
 import datetime
+from matplotlib.pyplot import get
 
 from tensorboardX import SummaryWriter
 
@@ -14,7 +15,7 @@ from env.chooseenv import make
 from Curve_ import cross_loss_curve
 import numpy as np
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -27,6 +28,16 @@ class Memory:
         del self.m_obs[:]
         del self.m_obs_next[:]
         
+def get_enemy_obs(map_agent): # 2 3 4  5 6 7
+    map_agent[map_agent==2] = 0.5
+    map_agent[map_agent==3] = 0.6
+    map_agent[map_agent==4] = 0.7
+    map_agent[map_agent==5] = 0.2
+    map_agent[map_agent==6] = 0.3
+    map_agent[map_agent==7] = 0.4
+    map_agent[map_agent==1] = 0.1
+    return map_agent
+
 
 def main(args):
     print("==algo: ", args.algo)
@@ -60,6 +71,7 @@ def main(args):
 
 
     memory  = Memory ()
+    memory_enemy  = Memory ()
     Memory_size = 4
     
     training_stage = 2000
@@ -78,21 +90,24 @@ def main(args):
     save_config(args, log_dir)
 
     model = SAC(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
+    model_enemy = SAC(obs_dim*Memory_size, act_dim, ctrl_agent_num, args)
 
-    if args.load_model:#True:#
+    if True:#args.load_model:#
         load_dir = os.path.join(os.path.dirname(run_dir), "run" + str(args.load_model_run))
         model.load_model(load_dir, episode=args.load_model_run_episode)
+        model_enemy.load_model(load_dir, episode=args.load_model_run_episode)
 
-    episode = 0
+    episode = 6000
 
     while episode < args.max_episodes:
         punishiment_lock = [6,6,6]
-        if episode > training_stage  : 
+        """if episode > training_stage  : 
             try:
                 new_lr = sample_lr[int(episode // training_stage)]
             except(IndexError):
                 new_lr = 0.000001#* (0.9 ** ((episode-Decay) //training_stage)) 
-
+        """
+        new_lr = 0.0001
         # Receive initial observation state s1
         state = env.reset()
 
@@ -106,13 +121,19 @@ def main(args):
         # since all snakes play independently, we choose first three snakes for training.
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
-        obs = visual_ob(state[0])/10
-
+        obs = visual_ob(state[0])
+        obs_enemy = obs.copy()
+        obs = obs/10
+        obs_enemy = get_enemy_obs(obs_enemy)
+        #print(obs,obs_enemy)
         #Memory-beginning
         for _ in range(Memory_size): 
             memory.m_obs.append(obs)
+            memory_enemy.m_obs.append(obs_enemy)
         obs = np.stack(memory.m_obs)
-
+        obs_enemy = np.stack(memory_enemy.m_obs)
+        
+        
         episode += 1
         step = 0
         episode_reward = np.zeros(6)
@@ -122,28 +143,41 @@ def main(args):
             # ================================== inference ========================================
             # For each agents i, select and execute action a:t,i = a:i,θ(s_t) + Nt
             logits = model.choose_action(obs)
-            #print("logits",logits)
 
             # ============================== add opponent actions =================================
             # we use rule-based greedy agent here. Or, you can switch to random agent.
-            actions = logits_AC(state_to_training, logits, height, width)
+            if np.random.uniform()>=0.2:
+                logits_enemy = model_enemy.choose_action(obs_enemy)
+                #print("logits,logits_enemy",logits,logits_enemy)
+                actions = np.array([logits , logits_enemy]).reshape(6)
+            else:
+                actions = logits_AC(state_to_training, logits, height, width)
             #print("actions",actions)
             #actions = logits_random(act_dim, logits)
 
             # Receive reward [r_t,i]i=1~n and observe new state s_t+1
             next_state, reward, done, _, info = env.step(env.encode(actions))
             next_state_to_training = next_state[0]
-            next_obs = visual_ob(next_state_to_training)/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
+            
+            next_obs = visual_ob(next_state_to_training)
+            next_obs_enemy = next_obs.copy()
+            next_obs_enemy = get_enemy_obs(next_obs_enemy)
+            next_obs = next_obs/10 #get_observations(next_state_to_training, ctrl_agent_index, obs_dim, height, width)/10
             
             #Memory /home/j-zhong/work_place/SAC_history.png
             if len(memory.m_obs_next) !=0: 
                 del memory.m_obs_next[:1]
+                del memory_enemy.m_obs_next[:1]
                 memory.m_obs_next.append(next_obs)
+                memory_enemy.m_obs_next.append(next_obs_enemy)
             else: 
                 memory.m_obs_next = memory.m_obs
+                memory_enemy.m_obs_next = memory_enemy.m_obs
                 memory.m_obs_next[Memory_size-1] = next_obs
-
+                memory_enemy.m_obs_next[Memory_size-1] = next_obs_enemy
+     
             next_obs = np.stack(memory.m_obs_next)
+            next_obs_enemy = np.stack(memory_enemy.m_obs_next)
                 
             # ================================== reward shaping ========================================
             reward = np.array(reward)
@@ -176,6 +210,7 @@ def main(args):
 
 
             obs = next_obs
+            obs_enemy = next_obs_enemy
             step += 1
             
             if args.episode_length <= step: # or (True in done)
@@ -200,7 +235,11 @@ def main(args):
 
                 if episode % args.save_interval == 0:
                     model.save_model(run_dir, episode)
-
+                
+                if episode % 150 == 0 and episode != 0:
+                    print("-------------------------Update Enemy!!!----------------------------")
+                    model_enemy.actor.load_state_dict(model.actor.state_dict())
+                
                 history_reward.append(np.sum(episode_reward[0:3]))
                 history_a_loss.append(model.a_loss/100)
                 history_c_loss.append(model.c_loss/10)
@@ -214,10 +253,11 @@ def main(args):
 
                 env.reset()
                 memory.clear_memory()
+                memory_enemy.clear_memory()
                 break
 
 
-if __name__ == '__main__':  #7
+if __name__ == '__main__':  #16
     parser = argparse.ArgumentParser()
     parser.add_argument('--game_name', default="snakes_3v3", type=str)
     parser.add_argument('--algo', default="ddpg", type=str, help="bicnet/ddpg")
@@ -226,8 +266,8 @@ if __name__ == '__main__':  #7
     parser.add_argument('--output_activation', default="softmax", type=str, help="tanh/softmax")
 
     parser.add_argument('--buffer_size', default=int(1e6), type=int) #1e5
-    parser.add_argument('--tau', default=0.01, type=float) #0.005
-    parser.add_argument('--gamma', default=0.9, type=float) #0.95
+    parser.add_argument('--tau', default=0.4, type=float) #0.005
+    parser.add_argument('--gamma', default=0.95, type=float) #0.95
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--a_lr', default=0.0001, type=float)#0.0001
     parser.add_argument('--c_lr', default=0.0001, type=float)
@@ -249,7 +289,7 @@ if __name__ == '__main__':  #7
                     help='Evaluates a policy a policy every 10 episode (default: True)')
 
     parser.add_argument("--load_model", action='store_true')  # 加是true；不加为false
-    parser.add_argument("--load_model_run", default=1, type=int)
+    parser.add_argument("--load_model_run", default=10, type=int)
     parser.add_argument("--load_model_run_episode", default=4000, type=int)
     parser.add_argument('--automatic_entropy_tuning', type=bool, default=True, metavar='G',
                     help='Automaically adjust α (default: False)')
